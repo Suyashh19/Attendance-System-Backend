@@ -14,7 +14,11 @@ const attendanceRoutes = require("./routes/attendanceRoutes");
 
 const app = express();
 
-app.use(cors());
+// Enable CORS with wildcard for development/initial deployment
+// In strict production, this should be replaced with `origin: process.env.FRONTEND_URL`
+app.use(cors({
+  origin: "*"
+}));
 app.use(express.json());
 
 // Main App Routing
