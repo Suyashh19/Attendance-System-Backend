@@ -1,0 +1,148 @@
+{
+  "info": {
+    "_postman_id": "b3e9d8f7-0f5a-4b9b-9c8d-7e6f5a4b3c2d",
+    "name": "Intelligent Attendance System API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/auth/register", "host": [ "{{baseUrl}}" ], "path": [ "api", "auth", "register" ] },
+            "body": { "mode": "raw", "raw": "{\n    \"email\": \"student1@test.com\",\n    \"password\": \"password123\",\n    \"role\": \"student\"\n}" }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": [ "{{baseUrl}}" ], "path": [ "api", "auth", "login" ] },
+            "body": { "mode": "raw", "raw": "{\n    \"email\": \"student1@test.com\",\n    \"password\": \"password123\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subjects",
+      "item": [
+        {
+          "name": "Create Subject (Faculty)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "{{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/subjects", "host": [ "{{baseUrl}}" ], "path": [ "api", "subjects" ] },
+            "body": { "mode": "raw", "raw": "{\n    \"name\": \"Data Structures\",\n    \"code\": \"CS301\"\n}" }
+          }
+        },
+        {
+          "name": "Get Subjects",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/subjects", "host": [ "{{baseUrl}}" ], "path": [ "api", "subjects" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Enrollments",
+      "item": [
+        {
+          "name": "Enroll Student",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "{{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/enrollments", "host": [ "{{baseUrl}}" ], "path": [ "api", "enrollments" ] },
+            "body": { "mode": "raw", "raw": "{\n    \"subjectId\": 1,\n    \"studentId\": 2\n}" }
+          }
+        },
+        {
+          "name": "Get Subject Enrollments",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/enrollments/1", "host": [ "{{baseUrl}}" ], "path": [ "api", "enrollments", "1" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sessions",
+      "item": [
+        {
+          "name": "Start Session (Faculty)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "{{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/start", "host": [ "{{baseUrl}}" ], "path": [ "api", "sessions", "start" ] },
+            "body": { "mode": "raw", "raw": "{\n    \"subjectId\": 1,\n    \"latitude\": 12.9715987,\n    \"longitude\": 77.5945627\n}" }
+          }
+        },
+        {
+          "name": "End Session (Faculty)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "{{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/1/end", "host": [ "{{baseUrl}}" ], "path": [ "api", "sessions", "1", "end" ] }
+          }
+        },
+        {
+          "name": "Get Active Session (Polling)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/sessions/1/active", "host": [ "{{baseUrl}}" ], "path": [ "api", "sessions", "1", "active" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Attendance",
+      "item": [
+        {
+          "name": "Submit Attendance (Student)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "{{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "url": { "raw": "{{baseUrl}}/api/attendance/submit", "host": [ "{{baseUrl}}" ], "path": [ "api", "attendance", "submit" ] },
+            "body": { "mode": "raw", "raw": "{\n    \"sessionId\": 1,\n    \"selectedCode\": \"472\",\n    \"deviceId\": \"A1B2C3D4\",\n    \"latitude\": 12.9715,\n    \"longitude\": 77.5946\n}" }
+          }
+        },
+        {
+          "name": "Get Subject Analytics (Faculty)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/attendance/subject/1/analytics", "host": [ "{{baseUrl}}" ], "path": [ "api", "attendance", "subject", "1", "analytics" ] }
+          }
+        },
+        {
+          "name": "Get My Record (Student)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "{{token}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/attendance/subject/1/my-record", "host": [ "{{baseUrl}}" ], "path": [ "api", "attendance", "subject", "1", "my-record" ] }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "your-jwt-token-here",
+      "type": "string"
+    }
+  ]
+}

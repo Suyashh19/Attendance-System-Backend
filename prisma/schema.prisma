@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── USER ────────────────────────────────────────────────────────────────────
+
+model User {
+  id       Int    @id @default(autoincrement())
+  email    String @unique
+  password String
+  role     String // "faculty" | "student"
+  name     String?
+  rollNo   String? @unique
+  deviceId String?
+
+  // Relations
+  taughtSubjects  Subject[]    @relation("FacultySubjects")
+  enrollments     Enrollment[]
+  sessions        Session[]
+  attendances     Attendance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── SUBJECT ─────────────────────────────────────────────────────────────────
+
+model Subject {
+  id        Int    @id @default(autoincrement())
+  name      String
+  code      String @unique   // e.g. "CS301"
+  facultyId Int
+
+  faculty     User         @relation("FacultySubjects", fields: [facultyId], references: [id])
+  enrollments Enrollment[]
+  sessions    Session[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── ENROLLMENT ───────────────────────────────────────────────────────────────
+
+model Enrollment {
+  id        Int @id @default(autoincrement())
+  studentId Int
+  subjectId Int
+
+  student User    @relation(fields: [studentId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+
+  enrolledAt DateTime @default(now())
+
+  @@unique([studentId, subjectId])
+}
+
+// ─── SESSION ─────────────────────────────────────────────────────────────────
+
+model Session {
+  id          Int     @id @default(autoincrement())
+  subjectId   Int
+  facultyId   Int
+  correctCode String  // 3-digit code e.g. "472"
+  fakeOptions String  // JSON array stored as string e.g. '["218","472","956","103"]'
+  isActive    Boolean @default(true)
+
+  // Faculty GPS anchor point
+  latitude    Float?
+  longitude   Float?
+
+  startTime   DateTime  @default(now())
+  endTime     DateTime?
+
+  subject     Subject      @relation(fields: [subjectId], references: [id])
+  faculty     User         @relation(fields: [facultyId], references: [id])
+  attendances Attendance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── ATTENDANCE ───────────────────────────────────────────────────────────────
+
+model Attendance {
+  id          Int    @id @default(autoincrement())
+  sessionId   Int
+  studentId   Int
+  status      String // "PRESENT" | "INVALID" | "ABSENT"
+  reason      String? // reason for INVALID/ABSENT
+
+  // Student submission data
+  submittedCode String?
+  deviceId      String?
+  latitude      Float?
+  longitude     Float?
+  submittedAt   DateTime?
+
+  session Session @relation(fields: [sessionId], references: [id])
+  student User    @relation(fields: [studentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sessionId, studentId]) // one record per student per session
+}
