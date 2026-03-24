@@ -112,4 +112,21 @@ async function getStudentRecord(studentId, subjectId) {
   };
 }
 
-module.exports = { getAttendanceSummary, getStudentRecord };
+async function getGlobalHistory(studentId) {
+  return prisma.attendance.findMany({
+    where: { studentId },
+    include: {
+      session: {
+        include: {
+          subject: {
+            select: { name: true, code: true }
+          }
+        }
+      }
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+module.exports = { getAttendanceSummary, getStudentRecord, getGlobalHistory };
+

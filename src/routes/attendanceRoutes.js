@@ -30,4 +30,12 @@ router.get(
   attendanceController.getMyRecord
 );
 
+// GET /api/attendance/history (Student only)
+router.get(
+  "/history",
+  requireRole("student"),
+  attendanceController.getAttendanceHistory
+);
+
+
 module.exports = router;

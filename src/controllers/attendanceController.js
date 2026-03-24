@@ -3,7 +3,7 @@
  */
 
 const { submitAttendance } = require("../services/attendanceService");
-const { getAttendanceSummary, getStudentRecord } = require("../services/analyticsService");
+const { getAttendanceSummary, getStudentRecord, getGlobalHistory } = require("../services/analyticsService");
 const { notifyStudent } = require("../services/notificationService");
 
 // Student: Submit attendance code along with GPS coordinates
@@ -54,6 +54,19 @@ exports.getMyRecord = async (req, res, next) => {
 
     const record = await getStudentRecord(studentId, subjectId);
     res.json(record);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Global history for student
+exports.getAttendanceHistory = async (req, res, next) => {
+  try {
+    const { userId, role } = req.user;
+    if (role !== "student") return res.status(403).json({ error: "Only students can view history" });
+
+    const history = await getGlobalHistory(userId);
+    res.json(history);
   } catch (err) {
     next(err);
   }

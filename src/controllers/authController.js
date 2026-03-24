@@ -55,11 +55,31 @@ exports.login = async (req, res) => {
     const token = jwt.sign(
       { userId: user.id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "15m" }
+      { expiresIn: "7d" }
     );
 
-    res.json({ token });
+    // Exclude password from user object
+    const { password: _, ...userWithoutPassword } = user;
+
+    res.json({ token, user: userWithoutPassword });
   } catch (err) {
-    res.status(500).send("Login error");
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Login error" });
   }
 };
+
+// GET PROFILE
+exports.getProfile = async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { id: true, email: true, role: true, name: true, rollNo: true, deviceId: true }
+    });
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: "Error fetching profile" });
+  }
+};
