@@ -5,7 +5,8 @@ const authMiddleware = require("../middleware/authMiddleware");
 
 router.get("/profile", authMiddleware, (req, res) => {
   res.json({
-    message: "Access granted",
+    message: "Access granted" ,
+    
     user: req.user,
   });
 });
