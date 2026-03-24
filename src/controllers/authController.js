@@ -46,11 +46,11 @@ exports.login = async (req, res) => {
       where: { email },
     });
 
-    if (!user) return res.status(404).send("User not found");
+    if (!user) return res.status(404).json({ error: "User not found" });
 
     const valid = await bcrypt.compare(password, user.password);
 
-    if (!valid) return res.status(401).send("Wrong password");
+    if (!valid) return res.status(401).json({ error: "Wrong password" });
 
     const token = jwt.sign(
       { userId: user.id, role: user.role },
