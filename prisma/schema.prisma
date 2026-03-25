@@ -76,6 +76,11 @@ model Session {
   startTime   DateTime  @default(now())
   endTime     DateTime?
 
+  // Scheduling fields
+  date               String? // e.g. "2026-03-11"
+  scheduledStartTime String? // e.g. "10:00"
+  scheduledEndTime   String? // e.g. "11:00"
+
   subject     Subject      @relation(fields: [subjectId], references: [id])
   faculty     User         @relation(fields: [facultyId], references: [id])
   attendances Attendance[]

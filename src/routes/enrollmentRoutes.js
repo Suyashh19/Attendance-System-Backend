@@ -3,17 +3,25 @@ const router = express.Router();
 
 const authMiddleware = require("../middleware/authMiddleware");
 const { requireRole } = require("../middleware/roleMiddleware");
-const { validateEnrollment } = require("../middleware/validationMiddleware");
+const { validateEnrollment, validateEnrollByCode } = require("../middleware/validationMiddleware");
 const enrollmentController = require("../controllers/enrollmentController");
 
 router.use(authMiddleware);
 
-// POST /api/enrollments
+// POST /api/enrollments/ (Faculty only)
 router.post(
   "/",
-  requireRole("faculty"), // or allow students depending on use case
+  requireRole("faculty"),
   validateEnrollment,
   enrollmentController.enrollStudent
+);
+
+// POST /api/enrollments/enroll (Student joins by code)
+router.post(
+  "/enroll",
+  requireRole("student"),
+  validateEnrollByCode,
+  enrollmentController.enrollByCode
 );
 
 // GET /api/enrollments/:subjectId

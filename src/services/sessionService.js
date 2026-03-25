@@ -46,11 +46,14 @@ function generateFakeOptions(correctCode) {
  * @param {Object} data
  * @param {number} data.subjectId
  * @param {number} data.facultyId
+ * @param {string} data.date
+ * @param {string} data.startTime
+ * @param {string} data.endTime
  * @param {number} [data.latitude]  - Faculty GPS anchor latitude
  * @param {number} [data.longitude] - Faculty GPS anchor longitude
  * @returns {Promise<Object>} The created Session with parsed fakeOptions
  */
-async function createSession({ subjectId, facultyId, latitude, longitude }) {
+async function createSession({ subjectId, facultyId, date, startTime, endTime, latitude, longitude }) {
   // Close any lingering active session for this subject
   await prisma.session.updateMany({
     where: { subjectId, isActive: true },
@@ -64,6 +67,9 @@ async function createSession({ subjectId, facultyId, latitude, longitude }) {
     data: {
       subjectId,
       facultyId,
+      date,
+      scheduledStartTime: startTime,
+      scheduledEndTime: endTime,
       correctCode,
       fakeOptions: JSON.stringify(fakeOptions),
       latitude: latitude ?? null,

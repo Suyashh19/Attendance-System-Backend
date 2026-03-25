@@ -19,16 +19,24 @@ const prisma = require("../config/db");
 // Faculty: Start a new attendance session
 exports.startSession = async (req, res, next) => {
   try {
-    const { subjectId, latitude, longitude } = req.body;
+    const { subjectId, date, startTime, endTime, latitude, longitude } = req.body;
     const facultyId = req.user.userId;
 
     // Verify ownership
-    const subject = await prisma.subject.findFirst({ where: { id: subjectId, facultyId } });
+    const subject = await prisma.subject.findFirst({ where: { id: Number(subjectId), facultyId } });
     if (!subject) {
       return res.status(403).json({ error: "You do not have permission for this subject" });
     }
 
-    const session = await createSession({ subjectId, facultyId, latitude, longitude });
+    const session = await createSession({ 
+      subjectId: Number(subjectId), 
+      facultyId, 
+      date, 
+      startTime, 
+      endTime, 
+      latitude, 
+      longitude 
+    });
 
     // Emit via Socket.IO
     broadcastSessionStarted(subjectId, session);
@@ -42,6 +50,9 @@ exports.startSession = async (req, res, next) => {
         options: session.fakeOptions, // shuffled codes including correct one
         startTime: session.startTime,
         timeLimitSeconds: 15, // matches UI representation
+        date: session.date,
+        scheduledStartTime: session.scheduledStartTime,
+        scheduledEndTime: session.scheduledEndTime,
       },
     });
   } catch (err) {
@@ -54,6 +65,22 @@ exports.endSession = async (req, res, next) => {
   try {
     const sessionId = Number(req.params.sessionId);
     const facultyId = req.user.userId;
+
+    // Check if session exists and is already closed
+    const existing = await prisma.session.findFirst({
+      where: { id: sessionId, facultyId }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    if (!existing.isActive) {
+      return res.json({ 
+        message: "Session is already closed", 
+        session: existing 
+      });
+    }
 
     const session = await endSession(sessionId, facultyId);
 

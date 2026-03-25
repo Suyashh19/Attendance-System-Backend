@@ -46,8 +46,15 @@ const validateEnrollment = validate({
   subjectId: { required: true },
 });
 
+const validateEnrollByCode = validate({
+  subjectCode: { required: true, type: "string" },
+});
+
 const validateStartSession = validate({
   subjectId: { required: true },
+  date:      { required: true, type: "string" }, // "2026-03-11"
+  startTime: { required: true, type: "string" }, // "10:00"
+  endTime:   { required: true, type: "string" }, // "11:00"
 });
 
 const validateSubmitAttendance = validate({
@@ -60,6 +67,7 @@ module.exports = {
   validateRegister,
   validateCreateSubject,
   validateEnrollment,
+  validateEnrollByCode,
   validateStartSession,
   validateSubmitAttendance,
 };
