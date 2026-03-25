@@ -17,6 +17,7 @@ model User {
   name     String?
   rollNo   String? @unique
   deviceId String?
+  pushToken String?
 
   // Relations
   taughtSubjects  Subject[]    @relation("FacultySubjects")

@@ -82,4 +82,24 @@ exports.getProfile = async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: "Error fetching profile" });
   }
-};
+};
+
+// SAVE PUSH TOKEN
+exports.savePushToken = async (req, res) => {
+  const { token } = req.body;
+  const userId = req.user.userId;
+
+  if (!token) return res.status(400).json({ error: "Token is required" });
+
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { pushToken: token },
+    });
+    console.log(`[DEBUG] Saved push token for user ${userId}`);
+    res.json({ message: "Push token saved successfully" });
+  } catch (err) {
+    console.error("Error saving push token:", err);
+    res.status(500).json({ error: "Failed to save push token" });
+  }
+};

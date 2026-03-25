@@ -33,6 +33,7 @@ function generateFakeOptions(correctCode) {
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
+  console.log(`[DEBUG] Generated 4 shuffled options (including ${correctCode}):`, arr);
   return arr;
 }
 

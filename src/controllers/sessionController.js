@@ -47,8 +47,18 @@ exports.startSession = async (req, res, next) => {
       longitude: longitude != null ? Number(longitude) : null 
     });
 
-    // Emit via Socket.IO
-    broadcastSessionStarted(subjectId, session);
+    // 1. Fetch enrolled students' push tokens
+    const enrollments = await prisma.enrollment.findMany({
+      where: { subjectId: Number(subjectId) },
+      include: { student: { select: { pushToken: true } } }
+    });
+    
+    const pushTokens = enrollments
+      .map(e => e.student.pushToken)
+      .filter(token => !!token);
+
+    // 2. Emit via Socket.IO and Send Push Notifications
+    broadcastSessionStarted(subjectId, session, pushTokens);
 
     res.status(201).json({
       message: "Session started successfully",
@@ -58,6 +68,7 @@ exports.startSession = async (req, res, next) => {
         correctCode: session.correctCode,
         options: session.fakeOptions, // shuffled codes including correct one
         startTime: session.startTime,
+        windowSeconds: 15, // Fix for frontend NaN issue
         timeLimitSeconds: 15, // matches UI representation
         date: session.date,
         scheduledStartTime: session.scheduledStartTime,
@@ -147,6 +158,7 @@ exports.getActiveSession = async (req, res, next) => {
         subjectId: session.subjectId,
         options: session.fakeOptions,
         startTime: session.startTime,
+        windowSeconds: 15, // Fix for frontend NaN issue
         timeLimitSeconds: 15,
       },
     });

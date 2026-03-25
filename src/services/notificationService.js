@@ -5,16 +5,55 @@
  */
 
 const { getIO } = require("../config/socket");
+const { Expo } = require("expo-server-sdk");
+
+// Create a new Expo SDK client
+const expo = new Expo();
+
+/**
+ * Send push notifications via Expo API.
+ */
+async function sendPushNotifications(tokens, title, body, data = {}) {
+  const messages = [];
+  for (let pushToken of tokens) {
+    if (!Expo.isExpoPushToken(pushToken)) {
+      console.error(`Push token ${pushToken} is not a valid Expo push token`);
+      continue;
+    }
+    messages.push({
+      to: pushToken,
+      sound: "default",
+      title,
+      body,
+      data,
+    });
+  }
+
+  const chunks = expo.chunkPushNotifications(messages);
+  const tickets = [];
+  for (let chunk of chunks) {
+    try {
+      let ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+      tickets.push(...ticketChunk);
+    } catch (error) {
+      console.error("Error sending push notifications:", error);
+    }
+  }
+  return tickets;
+}
 
 /**
  * Broadcast a new attendance session to all students in the subject room.
  * Students in the room receive: session details + shuffled options.
+ * Also sends push notifications to students.
  *
  * @param {number} subjectId
  * @param {Object} sessionData - Serializable session object
+ * @param {string[]} pushTokens - Array of Expo push tokens for students
  */
-function broadcastSessionStarted(subjectId, sessionData) {
+async function broadcastSessionStarted(subjectId, sessionData, pushTokens = []) {
   const io = getIO();
+  // Socket.IO emission
   // Emit to everyone in the subject room EXCEPT the faculty who started it
   io.to(`subject_${subjectId}`).emit("session_started", {
     sessionId: sessionData.id,
@@ -23,8 +62,20 @@ function broadcastSessionStarted(subjectId, sessionData) {
     subjectCode: sessionData.subject?.code,
     options: sessionData.fakeOptions, // shuffled — correctCode is NOT sent here
     startTime: sessionData.startTime,
+    windowSeconds: 15, // Fix for frontend NaN issue
     timeLimitSeconds: 15,
   });
+
+  // Push Notifications
+  if (pushTokens.length > 0) {
+    console.log(`[DEBUG] Sending push notifications to ${pushTokens.length} students...`);
+    await sendPushNotifications(
+      pushTokens,
+      `Attendance Started: ${sessionData.subject?.name || "New Session"}`,
+      "Open the app now to mark your attendance!",
+      { subjectId, sessionId: sessionData.id }
+    );
+  }
 }
 
 /**
