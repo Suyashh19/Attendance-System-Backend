@@ -80,8 +80,6 @@ model Session {
   date               DateTime? // New optional field
   scheduledStartTime String?   // Existing field
   scheduledEndTime   String?   // Existing field
-  startTime          String?   // New optional field (as requested)
-  endTime            String?   // New optional field (as requested)
   status             String?   @default("active") // New optional field
 
   subject     Subject      @relation(fields: [subjectId], references: [id])
