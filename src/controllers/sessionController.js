@@ -19,14 +19,23 @@ const prisma = require("../config/db");
 // Faculty: Start a new attendance session
 exports.startSession = async (req, res, next) => {
   try {
+    console.log("[DEBUG] Received startSession request:", req.body);
     const { subjectId, date, startTime, endTime, latitude, longitude } = req.body;
     const facultyId = req.user.userId;
+
+    if (!subjectId) {
+      console.warn("[DEBUG] Missing subjectId in request body");
+      return res.status(400).json({ error: "subjectId is required" });
+    }
 
     // Verify ownership
     const subject = await prisma.subject.findFirst({ where: { id: Number(subjectId), facultyId } });
     if (!subject) {
+      console.warn(`[DEBUG] Faculty ${facultyId} does not own subject ${subjectId}`);
       return res.status(403).json({ error: "You do not have permission for this subject" });
     }
+
+    console.log(`[DEBUG] Faculty ${facultyId} verified for subject ${subjectId}. Calling createSession...`);
 
     const session = await createSession({ 
       subjectId: Number(subjectId), 
@@ -34,8 +43,8 @@ exports.startSession = async (req, res, next) => {
       date, 
       startTime, 
       endTime, 
-      latitude, 
-      longitude 
+      latitude: latitude != null ? Number(latitude) : null, 
+      longitude: longitude != null ? Number(longitude) : null 
     });
 
     // Emit via Socket.IO

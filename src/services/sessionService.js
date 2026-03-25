@@ -57,46 +57,81 @@ async function createSession({ subjectId, classId, facultyId, date, startTime, e
   // Use subjectId or classId (for backward/forward compatibility)
   const targetSubjectId = Number(subjectId || classId);
 
+  console.log("[DEBUG] createSession called with:", {
+    targetSubjectId,
+    facultyId,
+    date,
+    startTime,
+    endTime,
+    latitude,
+    longitude
+  });
+
   if (!targetSubjectId) {
     throw new Error("Subject ID (classId) is required to start a session.");
   }
 
   // Close any lingering active session for this subject
-  await prisma.session.updateMany({
-    where: { subjectId: targetSubjectId, isActive: true },
-    data: { isActive: false, endTime: new Date() },
-  });
+  try {
+    const closedCount = await prisma.session.updateMany({
+      where: { subjectId: targetSubjectId, isActive: true },
+      data: { isActive: false, endTime: new Date() },
+    });
+    console.log(`[DEBUG] Closed ${closedCount.count} existing active sessions for subject ${targetSubjectId}`);
+  } catch (err) {
+    console.error("[DEBUG] Error closing existing sessions:", err);
+  }
 
   const correctCode = generateCode();
   const fakeOptions = generateFakeOptions(correctCode);
 
   try {
+    console.log("[DEBUG] Attempting prisma.session.create with data mapping...");
+    const sessionData = {
+      subjectId: targetSubjectId,
+      facultyId: Number(facultyId),
+      // 1. Handle Date: Convert string date to Date object
+      date: date ? new Date(date) : new Date(),
+      
+      // 2. IMPORTANT: startTime and endTime in DB are DateTime. 
+      // Do NOT pass strings from frontend ("10:00") directly to them.
+      startTime: new Date(), // Actual start is NOW
+      endTime: null,         // To be set when session ends
+      
+      // 3. Store the scheduled string times in correct TEXT fields
+      scheduledStartTime: startTime || null, 
+      scheduledEndTime: endTime || null,   
+      
+      correctCode,
+      fakeOptions: JSON.stringify(fakeOptions),
+      latitude: latitude != null ? Number(latitude) : null,
+      longitude: longitude != null ? Number(longitude) : null,
+      isActive: true,
+      status: "active",
+    };
+
+    console.log("[DEBUG] Prepared session data:", JSON.stringify(sessionData, null, 2));
+
     const session = await prisma.session.create({
-      data: {
-        subjectId: targetSubjectId,
-        facultyId: Number(facultyId),
-        date: date ? new Date(date) : new Date(),
-        startTime: startTime || null,
-        endTime: endTime || null,
-        scheduledStartTime: startTime || null, // Sync with existing fields
-        scheduledEndTime: endTime || null,   // Sync with existing fields
-        correctCode,
-        fakeOptions: JSON.stringify(fakeOptions),
-        latitude: latitude ?? null,
-        longitude: longitude ?? null,
-        isActive: true,
-        status: "active",
-      },
+      data: sessionData,
       include: { subject: { select: { name: true, code: true } } },
     });
+
+    console.log("[DEBUG] Session created successfully:", session.id);
 
     return {
       ...session,
       fakeOptions, // parsed array for convenience
     };
   } catch (error) {
-    console.error("Prisma Session Creation Error:", error);
-    // Mask raw database error as requested
+    // CRITICAL: Log the actual error for debugging
+    console.error("❌ Prisma Session Creation Failed!");
+    console.error("Error Name:", error.name);
+    console.error("Error Message:", error.message);
+    if (error.code) console.error("Prisma Error Code:", error.code);
+    if (error.meta) console.error("Prisma Error Meta:", JSON.stringify(error.meta));
+    
+    // Mask raw database error for frontend security, but provide better internal logs
     throw new Error("Failed to start session. Please try again.");
   }
 }
