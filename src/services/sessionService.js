@@ -53,36 +53,52 @@ function generateFakeOptions(correctCode) {
  * @param {number} [data.longitude] - Faculty GPS anchor longitude
  * @returns {Promise<Object>} The created Session with parsed fakeOptions
  */
-async function createSession({ subjectId, facultyId, date, startTime, endTime, latitude, longitude }) {
+async function createSession({ subjectId, classId, facultyId, date, startTime, endTime, latitude, longitude }) {
+  // Use subjectId or classId (for backward/forward compatibility)
+  const targetSubjectId = Number(subjectId || classId);
+
+  if (!targetSubjectId) {
+    throw new Error("Subject ID (classId) is required to start a session.");
+  }
+
   // Close any lingering active session for this subject
   await prisma.session.updateMany({
-    where: { subjectId, isActive: true },
+    where: { subjectId: targetSubjectId, isActive: true },
     data: { isActive: false, endTime: new Date() },
   });
 
   const correctCode = generateCode();
   const fakeOptions = generateFakeOptions(correctCode);
 
-  const session = await prisma.session.create({
-    data: {
-      subjectId,
-      facultyId,
-      date,
-      scheduledStartTime: startTime,
-      scheduledEndTime: endTime,
-      correctCode,
-      fakeOptions: JSON.stringify(fakeOptions),
-      latitude: latitude ?? null,
-      longitude: longitude ?? null,
-      isActive: true,
-    },
-    include: { subject: { select: { name: true, code: true } } },
-  });
+  try {
+    const session = await prisma.session.create({
+      data: {
+        subjectId: targetSubjectId,
+        facultyId: Number(facultyId),
+        date: date ? new Date(date) : new Date(),
+        startTime: startTime || null,
+        endTime: endTime || null,
+        scheduledStartTime: startTime || null, // Sync with existing fields
+        scheduledEndTime: endTime || null,   // Sync with existing fields
+        correctCode,
+        fakeOptions: JSON.stringify(fakeOptions),
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
+        isActive: true,
+        status: "active",
+      },
+      include: { subject: { select: { name: true, code: true } } },
+    });
 
-  return {
-    ...session,
-    fakeOptions, // parsed array for convenience
-  };
+    return {
+      ...session,
+      fakeOptions, // parsed array for convenience
+    };
+  } catch (error) {
+    console.error("Prisma Session Creation Error:", error);
+    // Mask raw database error as requested
+    throw new Error("Failed to start session. Please try again.");
+  }
 }
 
 /**
