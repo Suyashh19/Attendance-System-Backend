@@ -31,6 +31,7 @@ const LOCATION_RADIUS_METRES = 50;
  * @param {string} params.deviceId
  * @param {number} params.latitude
  * @param {number} params.longitude
+ * @param {number} [params.accuracy]      - GPS accuracy (metres)
  * @returns {Promise<{ status: string, reason?: string, attendance: Object }>}
  */
 async function submitAttendance({
@@ -40,10 +41,12 @@ async function submitAttendance({
   deviceId,
   latitude,
   longitude,
+  accuracy,
 }) {
   const submittedAt = new Date();
 
-  // ── Layer 1: Session active check ──────────────────────────────────────────
+  // ── Optimization: Parallel fetch for basic requirements ───────────────────
+  // We fetch the session first because we need the subjectId to check enrollment in the next step.
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     include: { subject: { select: { id: true, name: true, code: true } } },
@@ -58,19 +61,27 @@ async function submitAttendance({
       "Session is no longer active");
   }
 
+  // ── Optimization: Fetch enrollment, existing attendance, and user device in ONE parallel block ──
+  const [enrollment, existing, user] = await Promise.all([
+    prisma.enrollment.findFirst({
+      where: { studentId, subjectId: session.subjectId },
+    }),
+    prisma.attendance.findFirst({
+      where: { sessionId, studentId },
+    }),
+    prisma.user.findUnique({
+      where: { id: studentId },
+      select: { id: true, deviceId: true },
+    })
+  ]);
+
   // ── Layer 2: Enrollment validation ────────────────────────────────────────
-  const enrollment = await prisma.enrollment.findFirst({
-    where: { studentId, subjectId: session.subjectId },
-  });
   if (!enrollment) {
     return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
       "Student is not enrolled in this subject");
   }
 
   // ── Layer 3: Duplicate submission check ─────────────────────────────────––
-  const existing = await prisma.attendance.findFirst({
-    where: { sessionId, studentId },
-  });
   if (existing) {
     return {
       status: existing.status,
@@ -80,37 +91,39 @@ async function submitAttendance({
   }
 
   // ── Layer 4: Device ID validation ─────────────────────────────────────────
-  const deviceCheck = await validateDevice(studentId, deviceId);
+  // Optimized: Use already fetched 'user' data to avoid findUnique inside validateDevice
+  const deviceCheck = await validateDevice(studentId, deviceId, user);
   if (!deviceCheck.valid) {
     return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
       deviceCheck.reason);
   }
 
-  // ── Layer 5: Time-bound check (≤ 15 seconds from session start) ───────────
+  // ── Layer 5: Time-bound check (≤ 15 seconds from session start/active) ────
   const elapsedSeconds = (submittedAt.getTime() - new Date(session.startTime).getTime()) / 1000;
   if (elapsedSeconds > TIME_LIMIT_SECONDS) {
     return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
       `Response too late (${Math.round(elapsedSeconds)}s elapsed, limit is ${TIME_LIMIT_SECONDS}s)`);
   }
 
-  // ── Layer 6: GPS proximity check (≤ 50 m) ─────────────────────────────────
+  // ── Layer 6: GPS proximity check (radius check with accuracy handling) ────
   if (session.latitude !== null && session.longitude !== null) {
     if (latitude === undefined || latitude === null || longitude === undefined || longitude === null) {
       return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
         "GPS location is required for this session");
     }
 
-    const { valid: locationValid, distance } = isWithinRadius(
+    const { valid: locationValid, distance, effectiveAccuracy } = isWithinRadius(
       session.latitude,
       session.longitude,
       latitude,
       longitude,
+      accuracy,
       LOCATION_RADIUS_METRES
     );
 
     if (!locationValid) {
       return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
-        `Location out of range (${distance}m from session, limit is ${LOCATION_RADIUS_METRES}m)`);
+        `Location out of range (~${distance}m away). GPS drift adjusted by ${effectiveAccuracy}m.`);
     }
   }
 
@@ -120,7 +133,7 @@ async function submitAttendance({
       "Incorrect attendance code selected");
   }
 
-  // ── All checks passed → PRESENT ───────────────────────────────────────────
+  // ── All checks passed → Create PRESENT record ─────────────────────────────
   const attendance = await prisma.attendance.create({
     data: {
       sessionId,

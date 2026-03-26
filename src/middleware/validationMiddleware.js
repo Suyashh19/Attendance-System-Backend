@@ -61,6 +61,7 @@ const validateSubmitAttendance = validate({
   sessionId:    { required: true },
   selectedCode: { required: true },
   deviceId:     { required: true, type: "string" },
+  accuracy:     { required: false, type: "number" },
 });
 
 module.exports = {

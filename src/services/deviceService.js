@@ -12,14 +12,15 @@ const prisma = require("../config/db");
  * A new, different device is rejected after the first registration.
  * @param {number} userId
  * @param {string} incomingDeviceId
+ * @param {Object} [preFetchedUser] - Optional pre-fetched user object to save a DB call
  * @returns {{ valid: boolean, reason?: string }}
  */
-async function validateDevice(userId, incomingDeviceId) {
+async function validateDevice(userId, incomingDeviceId, preFetchedUser = null) {
   if (!incomingDeviceId || typeof incomingDeviceId !== "string") {
     return { valid: false, reason: "Missing or invalid device_id" };
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = preFetchedUser || (await prisma.user.findUnique({ where: { id: userId } }));
   if (!user) return { valid: false, reason: "User not found" };
 
   // First-time registration: bind device to user
