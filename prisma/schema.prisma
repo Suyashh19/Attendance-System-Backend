@@ -35,7 +35,7 @@ model User {
 model Subject {
   id        Int    @id @default(autoincrement())
   name      String
-  code      String @unique   // e.g. "CS301"
+  code      String   // e.g. "CS301"
   facultyId Int
   type      String @default("theory") // "theory" or "practical"
 
@@ -45,6 +45,8 @@ model Subject {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([code, type])
 }
 
 // ─── ENROLLMENT ───────────────────────────────────────────────────────────────

@@ -9,17 +9,24 @@ exports.createSubject = async (req, res, next) => {
     const { name, code, type } = req.body;
     const facultyId = req.user.userId;
 
-    const existing = await prisma.subject.findUnique({ where: { code } });
+    const existing = await prisma.subject.findFirst({ 
+      where: { code, type: (type || "theory").toLowerCase() } 
+    });
     if (existing) {
-      return res.status(400).json({ error: "Subject code already exists" });
+      return res.status(400).json({ error: "Self-same subject (code + type) already exists" });
     }
 
+    console.log(`[DEBUG] createSubject called for faculty ${facultyId}:`, { name, code, type });
+
+    // Normalize type to lowercase and handle possible undefined/null
+    const normalizedType = (type || "theory").toLowerCase();
+    
     const subject = await prisma.subject.create({
       data: { 
         name, 
         code, 
         facultyId,
-        type: type || "theory"
+        type: normalizedType
       },
     });
 

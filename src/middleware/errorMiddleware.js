@@ -11,9 +11,19 @@ const errorMiddleware = (err, req, res, next) => { // eslint-disable-line no-unu
   const statusCode = err.statusCode || err.status || 500;
   const message = err.message || "Internal Server Error";
 
+  // Detailed logging for Prisma errors
+  if (err.code) {
+    console.error(`[PRISMA ERROR] Code: ${err.code}, Meta:`, err.meta);
+  }
+
   res.status(statusCode).json({
     error: message,
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+    ...(process.env.NODE_ENV === "development" && { 
+      stack: err.stack,
+      details: err.details,
+      code: err.code,
+      meta: err.meta
+    }),
   });
 };
 

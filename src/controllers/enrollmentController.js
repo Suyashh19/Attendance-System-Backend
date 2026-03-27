@@ -29,27 +29,34 @@ exports.enrollByCode = async (req, res, next) => {
     const { subjectCode } = req.body;
     const studentId = req.user.userId;
 
-    const subject = await prisma.subject.findUnique({
+    const subjects = await prisma.subject.findMany({
       where: { code: subjectCode },
     });
-
-    if (!subject) {
-      return res.status(404).json({ error: "Subject not found with this code" });
+    
+    if (subjects.length === 0) {
+      return res.status(404).json({ error: "No subject found with this code" });
     }
 
-    const existing = await prisma.enrollment.findFirst({
-      where: { subjectId: subject.id, studentId },
+    // Enroll in all matching subjects (Theory, Practical, etc.)
+    const results = await Promise.all(subjects.map(async (subj) => {
+      const existing = await prisma.enrollment.findFirst({
+        where: { subjectId: subj.id, studentId },
+      });
+      
+      if (!existing) {
+        return prisma.enrollment.create({
+          data: { subjectId: subj.id, studentId },
+        });
+      }
+      return null;
+    }));
+
+    const enrolledCount = results.filter(r => !!r).length;
+    
+    res.status(201).json({ 
+      message: enrolledCount > 0 ? `Successfully enrolled in ${enrolledCount} subject(s)` : "You are already enrolled in all matching classes",
+      subjects: subjects.map(s => s.name)
     });
-
-    if (existing) {
-      return res.status(400).json({ error: "You are already enrolled in this subject" });
-    }
-
-    const enrollment = await prisma.enrollment.create({
-      data: { subjectId: subject.id, studentId },
-    });
-
-    res.status(201).json({ message: "Enrolled successfully", subjectName: subject.name });
   } catch (err) {
     next(err);
   }
