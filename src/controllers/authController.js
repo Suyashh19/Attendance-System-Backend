@@ -136,7 +136,7 @@ exports.updatePrn = async (req, res) => {
 
     // Check if PRN is globally unique
     const existingPrn = await prisma.user.findUnique({ where: { prn } });
-    if (existingPrn) return res.status(400).json({ error: "PRN already is use" });
+    if (existingPrn) return res.status(400).json({ error: "PRN already in use" });
 
     const updatedUser = await prisma.user.update({
       where: { id: userId },
