@@ -140,7 +140,7 @@ async function getHierarchicalHistory(studentId) {
       session: {
         include: {
           subject: {
-            select: { id: true, name: true, code: true }
+            select: { id: true, name: true, code: true, type: true }
           }
         }
       }
@@ -157,6 +157,7 @@ async function getHierarchicalHistory(studentId) {
         id: subj.id,
         name: subj.name,
         code: subj.code,
+        type: subj.type,
         records: [],
         stats: { PRESENT: 0, ABSENT: 0, INVALID: 0, total: 0 }
       };

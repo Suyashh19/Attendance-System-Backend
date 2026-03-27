@@ -39,6 +39,7 @@ const validateRegister = validate({
 const validateCreateSubject = validate({
   name: { required: true, type: "string" },
   code: { required: true, type: "string" },
+  type: { required: false, type: "string" },
 });
 
 const validateEnrollment = validate({
