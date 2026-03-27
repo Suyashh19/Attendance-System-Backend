@@ -79,6 +79,7 @@ model Session {
   longitude   Float?
 
   startTime   DateTime  @default(now())
+  windowExpiry DateTime?
   endTime     DateTime?
 
   // Scheduling fields

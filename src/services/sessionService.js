@@ -97,6 +97,7 @@ async function createSession({ subjectId, classId, facultyId, date, startTime, e
       // 2. IMPORTANT: startTime and endTime in DB are DateTime. 
       // Do NOT pass strings from frontend ("10:00") directly to them.
       startTime: new Date(), // Actual start is NOW
+      windowExpiry: new Date(Date.now() + 15000), // 15-second attendance window
       endTime: null,         // To be set when session ends
       
       // 3. Store the scheduled string times in correct TEXT fields

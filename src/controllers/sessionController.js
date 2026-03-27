@@ -68,11 +68,8 @@ exports.startSession = async (req, res, next) => {
         correctCode: session.correctCode,
         options: session.fakeOptions, // shuffled codes including correct one
         startTime: session.startTime,
-        windowSeconds: 15, // Fix for frontend NaN issue
-        timeLimitSeconds: 15, // matches UI representation
-        date: session.date,
-        scheduledStartTime: session.scheduledStartTime,
-        scheduledEndTime: session.scheduledEndTime,
+        windowExpiry: session.windowExpiry, // Authoritative source
+        windowSeconds: 15,
         serverTime: new Date().toISOString(),
       },
     });
@@ -162,8 +159,8 @@ exports.getActiveSession = async (req, res, next) => {
         subjectId: session.subjectId,
         options: session.fakeOptions,
         startTime: session.startTime,
-        windowSeconds: 15, // Fix for frontend NaN issue
-        timeLimitSeconds: 15,
+        windowExpiry: session.windowExpiry,
+        windowSeconds: 15,
         serverTime: new Date().toISOString(),
       },
     });

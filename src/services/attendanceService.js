@@ -98,11 +98,15 @@ async function submitAttendance({
       deviceCheck.reason);
   }
 
-  // ── Layer 5: Time-bound check (≤ 15 seconds from session start/active) ────
-  const elapsedSeconds = (submittedAt.getTime() - new Date(session.startTime).getTime()) / 1000;
-  if (elapsedSeconds > TIME_LIMIT_SECONDS) {
+  // ─── Layer 5: Time-bound check (Strict windowExpiry from DB) ──────────────
+  // We add a tiny 2-second grace period purely for network transit.
+  const gracePeriodMs = 2000;
+  const expiryTime = new Date(session.windowExpiry).getTime() + gracePeriodMs;
+
+  if (submittedAt.getTime() > expiryTime) {
+    const overdue = Math.round((submittedAt.getTime() - expiryTime) / 1000);
     return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
-      `Response too late (${Math.round(elapsedSeconds)}s elapsed, limit is ${TIME_LIMIT_SECONDS}s)`);
+      `Attendance window expired (${overdue}s ago)`);
   }
 
   // ── Layer 6: GPS proximity check (radius check with accuracy handling) ────
