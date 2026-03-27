@@ -18,7 +18,7 @@ const prisma = require("../config/db");
 const { validateDevice } = require("./deviceService");
 const { isWithinRadius } = require("./locationService");
 
-const TIME_LIMIT_SECONDS = 15;
+const TIME_LIMIT_SECONDS = 20;
 const LOCATION_RADIUS_METRES = 50;
 
 /**
