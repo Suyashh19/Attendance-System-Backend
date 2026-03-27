@@ -64,6 +64,7 @@ async function broadcastSessionStarted(subjectId, sessionData, pushTokens = []) 
     startTime: sessionData.startTime,
     windowSeconds: 15, // Fix for frontend NaN issue
     timeLimitSeconds: 15,
+    serverTime: new Date().toISOString(),
   });
 
   // Push Notifications

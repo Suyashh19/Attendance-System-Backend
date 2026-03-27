@@ -73,6 +73,7 @@ exports.startSession = async (req, res, next) => {
         date: session.date,
         scheduledStartTime: session.scheduledStartTime,
         scheduledEndTime: session.scheduledEndTime,
+        serverTime: new Date().toISOString(),
       },
     });
   } catch (err) {
@@ -122,7 +123,10 @@ exports.endSession = async (req, res, next) => {
 
     res.json({
       message: "Session ended successfully",
-      session,
+      session: {
+        ...session,
+        serverTime: new Date().toISOString()
+      },
       markedAbsent: absentStudentIds.length,
     });
   } catch (err) {
@@ -160,6 +164,7 @@ exports.getActiveSession = async (req, res, next) => {
         startTime: session.startTime,
         windowSeconds: 15, // Fix for frontend NaN issue
         timeLimitSeconds: 15,
+        serverTime: new Date().toISOString(),
       },
     });
   } catch (err) {
