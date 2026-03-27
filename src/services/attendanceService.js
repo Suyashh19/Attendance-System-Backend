@@ -19,7 +19,7 @@ const { validateDevice } = require("./deviceService");
 const { isWithinRadius } = require("./locationService");
 
 const TIME_LIMIT_SECONDS = 20;
-const LOCATION_RADIUS_METRES = 50;
+const LOCATION_RADIUS_METRES = 80;
 
 /**
  * Submit and verify a student's attendance.

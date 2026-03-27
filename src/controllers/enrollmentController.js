@@ -28,9 +28,10 @@ exports.enrollByCode = async (req, res, next) => {
   try {
     const { subjectCode } = req.body;
     const studentId = req.user.userId;
+    const normalizedCode = subjectCode.trim().toUpperCase();
 
     const subjects = await prisma.subject.findMany({
-      where: { code: subjectCode },
+      where: { code: normalizedCode },
     });
     
     if (subjects.length === 0) {
