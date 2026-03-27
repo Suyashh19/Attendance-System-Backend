@@ -150,3 +150,30 @@ exports.updatePrn = async (req, res) => {
     res.status(500).json({ error: "Failed to update PRN" });
   }
 };
+
+// DELETE ACCOUNT (CASCADING)
+exports.deleteAccount = async (req, res, next) => {
+  const userId = req.user.userId;
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete Attendances
+      await tx.attendance.deleteMany({ where: { studentId: userId } });
+      // 2. Delete Enrollments
+      await tx.enrollment.deleteMany({ where: { studentId: userId } });
+      // 3. Delete Subjects/Sessions if Faculty
+      const ownedSubjects = await tx.subject.findMany({ where: { facultyId: userId }, select: { id: true } });
+      if (ownedSubjects.length > 0) {
+        const sIds = ownedSubjects.map(s => s.id);
+        await tx.attendance.deleteMany({ where: { session: { subjectId: { in: sIds } } } });
+        await tx.session.deleteMany({ where: { subjectId: { in: sIds } } });
+        await tx.subject.deleteMany({ where: { facultyId: userId } });
+      }
+      // 4. Finally delete the User profile
+      await tx.user.delete({ where: { id: userId } });
+    });
+    res.json({ message: "Account deleted permanently" });
+  } catch (err) {
+    console.error("Error deleting account:", err);
+    res.status(500).json({ error: "Failed to delete account" });
+  }
+};

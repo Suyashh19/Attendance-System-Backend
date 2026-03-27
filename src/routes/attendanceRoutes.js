@@ -37,5 +37,12 @@ router.get(
   attendanceController.getAttendanceHistory
 );
 
+// DELETE /api/attendance/subject/:subjectId (Student only)
+router.delete(
+  "/subject/:subjectId",
+  requireRole("student"),
+  attendanceController.deleteSubjectHistory
+);
+
 
 module.exports = router;

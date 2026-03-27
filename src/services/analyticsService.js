@@ -120,13 +120,61 @@ async function getGlobalHistory(studentId) {
       session: {
         include: {
           subject: {
-            select: { name: true, code: true }
+            select: { id: true, name: true, code: true }
           }
         }
       }
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { session: { startTime: "desc" } },
   });
+}
+
+/**
+ * Get hierarchical attendance history for a student.
+ * Groups records by Subject.
+ */
+async function getHierarchicalHistory(studentId) {
+  const attendances = await prisma.attendance.findMany({
+    where: { studentId },
+    include: {
+      session: {
+        include: {
+          subject: {
+            select: { id: true, name: true, code: true }
+          }
+        }
+      }
+    },
+    orderBy: { session: { startTime: "desc" } },
+  });
+
+  const subjectsMap = {};
+
+  attendances.forEach((att) => {
+    const subj = att.session.subject;
+    if (!subjectsMap[subj.id]) {
+      subjectsMap[subj.id] = {
+        id: subj.id,
+        name: subj.name,
+        code: subj.code,
+        records: [],
+        stats: { PRESENT: 0, ABSENT: 0, INVALID: 0, total: 0 }
+      };
+    }
+
+    subjectsMap[subj.id].records.push({
+      id: att.id,
+      status: att.status,
+      date: att.session.startTime, // Use session time for accuracy
+      reason: att.reason,
+      submittedAt: att.submittedAt
+    });
+
+    subjectsMap[subj.id].stats[att.status]++;
+    subjectsMap[subj.id].stats.total++;
+  });
+
+  return Object.values(subjectsMap);
 }
 
 /**
@@ -248,6 +296,7 @@ module.exports = {
   getAttendanceSummary, 
   getStudentRecord, 
   getGlobalHistory,
+  getHierarchicalHistory,
   generateAttendanceMatrix 
 };
 

@@ -2,8 +2,8 @@
  * controllers/attendanceController.js
  */
 
-const { submitAttendance } = require("../services/attendanceService");
-const { getAttendanceSummary, getStudentRecord, getGlobalHistory } = require("../services/analyticsService");
+const { submitAttendance, deleteSubjectHistory } = require("../services/attendanceService");
+const { getAttendanceSummary, getStudentRecord, getGlobalHistory, getHierarchicalHistory } = require("../services/analyticsService");
 const { notifyStudent } = require("../services/notificationService");
 
 // Student: Submit attendance code along with GPS coordinates
@@ -66,8 +66,21 @@ exports.getAttendanceHistory = async (req, res, next) => {
     const { userId, role } = req.user;
     if (role !== "student") return res.status(403).json({ error: "Only students can view history" });
 
-    const history = await getGlobalHistory(userId);
+    const history = await getHierarchicalHistory(userId);
     res.json(history);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Delete student's history for a specific subject
+exports.deleteSubjectHistory = async (req, res, next) => {
+  try {
+    const studentId = req.user.userId;
+    const subjectId = Number(req.params.subjectId);
+
+    await deleteSubjectHistory(studentId, subjectId);
+    res.json({ message: "Subject history deleted successfully" });
   } catch (err) {
     next(err);
   }

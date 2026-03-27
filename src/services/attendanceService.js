@@ -224,4 +224,16 @@ async function markAbsentees(sessionId) {
   return absentees.map((e) => e.studentId);
 }
 
-module.exports = { submitAttendance, markAbsentees };
+/**
+ * Delete all attendance records for a student in a specific subject.
+ */
+async function deleteSubjectHistory(studentId, subjectId) {
+  return prisma.attendance.deleteMany({
+    where: {
+      studentId: Number(studentId),
+      session: { subjectId: Number(subjectId) }
+    }
+  });
+}
+
+module.exports = { submitAttendance, markAbsentees, deleteSubjectHistory };
