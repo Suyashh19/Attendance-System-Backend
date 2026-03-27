@@ -6,7 +6,7 @@ const prisma = require("../config/db");
 
 exports.createSubject = async (req, res, next) => {
   try {
-    const { name, code } = req.body;
+    const { name, code, type } = req.body;
     const facultyId = req.user.userId;
 
     const existing = await prisma.subject.findUnique({ where: { code } });
@@ -15,7 +15,12 @@ exports.createSubject = async (req, res, next) => {
     }
 
     const subject = await prisma.subject.create({
-      data: { name, code, facultyId },
+      data: { 
+        name, 
+        code, 
+        facultyId,
+        type: type || "theory"
+      },
     });
 
     res.status(201).json({ message: "Subject created successfully", subject });

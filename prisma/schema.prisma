@@ -37,6 +37,7 @@ model Subject {
   name      String
   code      String @unique   // e.g. "CS301"
   facultyId Int
+  type      String @default("theory") // "theory" or "practical"
 
   faculty     User         @relation("FacultySubjects", fields: [facultyId], references: [id])
   enrollments Enrollment[]
