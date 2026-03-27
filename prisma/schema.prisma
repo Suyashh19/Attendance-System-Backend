@@ -16,6 +16,7 @@ model User {
   role     String // "faculty" | "student"
   name     String?
   rollNo   String? @unique
+  prn      String? @unique
   deviceId String?
   pushToken String?
 
