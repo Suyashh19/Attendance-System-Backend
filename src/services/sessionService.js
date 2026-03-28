@@ -67,9 +67,23 @@ async function createSession({ subjectId, classId, facultyId, date, startTime, e
     latitude,
     longitude
   });
-
+  
   if (!targetSubjectId) {
     throw new Error("Subject ID (classId) is required to start a session.");
+  }
+
+  // Lock: Reject if a session was created VERY recently (e.g., < 10 seconds ago)
+  // This prevents rapid-fire duplicate sessions from multiple clicks or network retries.
+  const recentSession = await prisma.session.findFirst({
+    where: { 
+      subjectId: targetSubjectId, 
+      startTime: { gte: new Date(Date.now() - 10000) } 
+    }
+  });
+
+  if (recentSession) {
+    console.warn(`[DEBUG] Rejecting session start for subject ${targetSubjectId}: Already started ${Math.round((Date.now() - recentSession.startTime.getTime())/1000)}s ago.`);
+    throw new Error("A session for this subject was started very recently. Please wait a moment.");
   }
 
   // Close any lingering active session for this subject
