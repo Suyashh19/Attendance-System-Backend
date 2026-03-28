@@ -10,8 +10,8 @@ const { notifyStudent } = require("../services/notificationService");
 exports.submitAttendance = async (req, res, next) => {
   try {
     const studentId = req.user.userId;
-    const { sessionId, selectedCode, deviceId, latitude, longitude, accuracy } = req.body;
-
+    const { sessionId, selectedCode, deviceId, latitude, longitude, accuracy, isRetry } = req.body;
+    
     // Run the multi-layer pipeline
     const result = await submitAttendance({
       sessionId: Number(sessionId),
@@ -21,6 +21,7 @@ exports.submitAttendance = async (req, res, next) => {
       latitude,
       longitude,
       accuracy,
+      isRetry: !!isRetry,
     });
 
     // Notify student via private socket room asynchronously

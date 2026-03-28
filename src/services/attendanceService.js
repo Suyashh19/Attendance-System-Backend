@@ -19,7 +19,7 @@ const { validateDevice } = require("./deviceService");
 const { isWithinRadius } = require("./locationService");
 
 const TIME_LIMIT_SECONDS = 20;
-const LOCATION_RADIUS_METRES = 80;
+const LOCATION_RADIUS_METRES = 100;
 
 /**
  * Submit and verify a student's attendance.
@@ -42,6 +42,7 @@ async function submitAttendance({
   latitude,
   longitude,
   accuracy,
+  isRetry = false,
 }) {
   const submittedAt = new Date();
 
@@ -110,29 +111,48 @@ async function submitAttendance({
   }
 
   // ── Layer 6: GPS proximity check (radius check with accuracy handling) ────
+  let locationResult = { valid: true };
   if (session.latitude !== null && session.longitude !== null) {
     if (latitude === undefined || latitude === null || longitude === undefined || longitude === null) {
       return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
         "GPS location is required for this session");
     }
 
-    const { valid: locationValid, distance, effectiveAccuracy } = isWithinRadius(
+    locationResult = isWithinRadius(
       session.latitude,
       session.longitude,
       latitude,
       longitude,
       accuracy,
-      LOCATION_RADIUS_METRES
+      LOCATION_RADIUS_METRES,
+      isRetry ? 50 : 100 // Enforce 50m on retry, 100m otherwise
     );
-
-    if (!locationValid) {
-      return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
-        `Location out of range (~${distance}m away). GPS drift adjusted by ${effectiveAccuracy}m.`);
-    }
   }
 
   // ── Layer 7: Correct code validation ──────────────────────────────────────
-  if (String(selectedCode) !== String(session.correctCode)) {
+  const isCodeCorrect = String(selectedCode) === String(session.correctCode);
+
+  // ── Conditional Retry Logic ──────────────────────────────────────────────
+  // If location is invalid but code is correct, and it's not already a retry, request one.
+  if (!locationResult.valid && isCodeCorrect && !isRetry) {
+    return { 
+      status: "RETRY_REQUIRED", 
+      reason: "Location or accuracy validation failed. Correct code detected, one retry allowed." 
+    };
+  }
+
+  // ── Final Validation ──────────────────────────────────────────────────────
+  if (!locationResult.valid) {
+    let reason = "Location verification failed";
+    if (!locationResult.isAccuracyValid) {
+        reason = `Location verification failed: GPS accuracy too poor (${Math.round(accuracy)}m). Max allowed: 50m.`;
+    } else if (!locationResult.isDistanceValid) {
+        reason = `Location verification failed: Out of range (~${locationResult.distance}m away). Max allowed: ${LOCATION_RADIUS_METRES}m.`;
+    }
+    return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode, reason);
+  }
+
+  if (!isCodeCorrect) {
     return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
       "Incorrect attendance code selected");
   }

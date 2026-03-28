@@ -45,22 +45,25 @@ function getDistance(lat1, lng1, lat2, lng2) {
  * @param {number} studentLat      - Student submitted latitude
  * @param {number} studentLng      - Student submitted longitude
  * @param {number} [accuracyM=0]   - GPS accuracy in metres (from device)
- * @param {number} [radiusM=80]    - Allowed radius in metres (default 80 m for classrooms)
- * @returns {{ valid: boolean, distance: number, effectiveAccuracy: number }}
+ * @param {number} [radiusM=100]   - Allowed radius in metres (default 100 m)
+ * @param {number} [accuracyLimit=100] - Max allowed accuracy in metres
+ * @returns {{ valid: boolean, distance: number, isAccuracyValid: boolean, isDistanceValid: boolean }}
  */
-function isWithinRadius(sessionLat, sessionLng, studentLat, studentLng, accuracyM = 0, radiusM = 80) {
+function isWithinRadius(sessionLat, sessionLng, studentLat, studentLng, accuracyM = 0, radiusM = 100, accuracyLimit = 100) {
   const distance = getDistance(sessionLat, sessionLng, studentLat, studentLng);
   
-  // Logic: if (distance - accuracy) <= radius, we consider it valid.
-  // This allows for GPS drift while maintaining a reasonable geofence.
-  // We cap the accuracy impact to avoid "teleportation" cheats (max 100m adjustment)
-  const effectiveAccuracy = Math.min(Number(accuracyM) || 0, 100);
-  const isValid = (distance - effectiveAccuracy) <= radiusM;
+  // Strict Requirements:
+  // 1. Accuracy must be within limit (Initial: 100m, Retry: 50m)
+  // 2. Distance must be within radius (100m)
+  const isAccuracyValid = (Number(accuracyM) || 0) <= accuracyLimit;
+  const isDistanceValid = distance <= radiusM;
+  const isValid = isDistanceValid && isAccuracyValid;
 
   return {
     valid: isValid,
     distance: Math.round(distance),
-    effectiveAccuracy: Math.round(effectiveAccuracy),
+    isAccuracyValid,
+    isDistanceValid,
   };
 }
 
