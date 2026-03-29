@@ -23,8 +23,8 @@ async function validateDevice(userId, incomingDeviceId, preFetchedUser = null) {
   const user = preFetchedUser || (await prisma.user.findUnique({ where: { id: userId } }));
   if (!user) return { valid: false, reason: "User not found" };
 
-  // First-time registration: bind device to user
-  if (!user.deviceId) {
+  // First-time attendance registration (locking event)
+  if (!user.deviceLocked) {
     // Ensure no TWO users register with the same exact physical deviceId (prevent device sharing cheating)
     const deviceInUse = await prisma.user.findFirst({
       where: { deviceId: incomingDeviceId, id: { not: userId } }
@@ -36,12 +36,12 @@ async function validateDevice(userId, incomingDeviceId, preFetchedUser = null) {
 
     await prisma.user.update({
       where: { id: userId },
-      data: { deviceId: incomingDeviceId },
+      data: { deviceId: incomingDeviceId, deviceLocked: true },
     });
     return { valid: true };
   }
 
-  // Subsequent requests: must match registered device
+  // Subsequent requests: must match registered device since it is locked
   if (user.deviceId !== incomingDeviceId) {
     return {
       valid: false,

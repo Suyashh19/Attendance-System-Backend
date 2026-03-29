@@ -18,6 +18,7 @@ model User {
   rollNo   String? @unique
   prn      String? @unique
   deviceId String?
+  deviceLocked Boolean @default(false)
   pushToken String?
 
   // Relations

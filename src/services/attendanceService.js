@@ -72,7 +72,7 @@ async function submitAttendance({
     }),
     prisma.user.findUnique({
       where: { id: studentId },
-      select: { id: true, deviceId: true },
+      select: { id: true, deviceId: true, deviceLocked: true },
     })
   ]);
 
