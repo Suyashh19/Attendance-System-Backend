@@ -241,7 +241,6 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
   // Define Columns
   const columns = [
     { header: "PRN", key: "prn", width: 15 },
-    { header: "Roll No", key: "rollNo", width: 12 },
     { header: "Student Name", key: "name", width: 25 },
     { header: "Email", key: "email", width: 30 },
   ];
@@ -261,7 +260,6 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
   students.forEach(student => {
     const row = {
       prn: student.prn || "N/A",
-      rollNo: student.rollNo || "N/A",
       name: student.name,
       email: student.email,
     };
@@ -275,7 +273,7 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
     
     // Style alignment & colors
     sessions.forEach((session, idx) => {
-      const cell = addedRow.getCell(idx + 5); // Columns 1-4 are info (PRN, RollNo, Name, Email)
+      const cell = addedRow.getCell(idx + 4); // Columns 1-3 are info (PRN, Name, Email)
       if (cell.value === "PRESENT") {
         cell.font = { color: { argb: "FF065F46" }, bold: true }; // dark green
       } else if (cell.value === "INVALID") {
