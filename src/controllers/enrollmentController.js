@@ -83,3 +83,38 @@ exports.getSubjectEnrollments = async (req, res, next) => {
     next(err);
   }
 };
+
+// Student unenrolls from a subject
+exports.unenrollSubject = async (req, res, next) => {
+  try {
+    const subjectId = Number(req.params.subjectId);
+    const studentId = req.user.userId;
+
+    const enrollment = await prisma.enrollment.findFirst({
+      where: { subjectId, studentId },
+    });
+
+    if (!enrollment) {
+      return res.status(404).json({ error: "You are not enrolled in this subject" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete student's attendance for this subject
+      await tx.attendance.deleteMany({
+        where: {
+          studentId,
+          session: { subjectId },
+        },
+      });
+
+      // 2. Delete the enrollment record
+      await tx.enrollment.delete({
+        where: { id: enrollment.id },
+      });
+    });
+
+    res.json({ message: "Successfully unenrolled from subject" });
+  } catch (err) {
+    next(err);
+  }
+};

@@ -22,4 +22,11 @@ router.post(
   subjectController.createSubject
 );
 
+// DELETE /api/subjects/:id
+router.delete(
+  "/:id",
+  requireRole("faculty"),
+  subjectController.deleteSubject
+);
+
 module.exports = router;

@@ -31,4 +31,11 @@ router.get(
   enrollmentController.getSubjectEnrollments
 );
 
+// DELETE /api/enrollments/:subjectId/unenroll
+router.delete(
+  "/:subjectId/unenroll",
+  requireRole("student"),
+  enrollmentController.unenrollSubject
+);
+
 module.exports = router;
