@@ -21,6 +21,30 @@ const { isWithinRadius } = require("./locationService");
 const TIME_LIMIT_SECONDS = 20;
 const LOCATION_RADIUS_METRES = 100;
 
+// Simple internal session cache (lives purely in RAM, highly efficient)
+const sessionCache = new Map();
+
+async function getSessionCached(sessionId) {
+  const now = Date.now();
+  const cached = sessionCache.get(sessionId);
+  
+  // Cache for only 2 seconds. Limits DB hits without causing stale state issues if a professor ends the session.
+  if (cached && (now - cached.timestamp < 2000)) {
+    return cached.data;
+  }
+
+  const session = await prisma.session.findUnique({
+    where: { id: Number(sessionId) },
+    include: { subject: { select: { id: true, name: true, code: true } } },
+  });
+
+  if (session) {
+    sessionCache.set(sessionId, { data: session, timestamp: now });
+  }
+  
+  return session;
+}
+
 /**
  * Submit and verify a student's attendance.
  *
@@ -46,12 +70,9 @@ async function submitAttendance({
 }) {
   const submittedAt = new Date();
 
-  // ── Optimization: Parallel fetch for basic requirements ───────────────────
-  // We fetch the session first because we need the subjectId to check enrollment in the next step.
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    include: { subject: { select: { id: true, name: true, code: true } } },
-  });
+  // ── Optimization: In-Memory cache for session ─────────────────────────────
+  // We fetch the session using our 2-second RAM cache to prevent DB connection exhaustion under high load.
+  const session = await getSessionCached(sessionId);
 
   if (!session) {
     return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
@@ -62,19 +83,26 @@ async function submitAttendance({
       "Session is no longer active");
   }
 
-  // ── Optimization: Fetch enrollment, existing attendance, and user device in ONE parallel block ──
-  const [enrollment, existing, user] = await Promise.all([
-    prisma.enrollment.findFirst({
-      where: { studentId, subjectId: session.subjectId },
-    }),
-    prisma.attendance.findFirst({
-      where: { sessionId, studentId },
-    }),
-    prisma.user.findUnique({
-      where: { id: studentId },
-      select: { id: true, deviceId: true, deviceLocked: true },
-    })
-  ]);
+  // ── Optimization: Fetch user, enrollment, and attendance in ONE DB connection ──
+  const user = await prisma.user.findUnique({
+    where: { id: Number(studentId) },
+    select: {
+      id: true,
+      deviceId: true,
+      deviceLocked: true,
+      enrollments: { 
+        where: { subjectId: session.subjectId },
+        select: { id: true } 
+      },
+      attendances: { 
+        where: { sessionId: Number(sessionId) },
+        select: { id: true, status: true, submittedCode: true, reason: true } 
+      }
+    }
+  });
+
+  const enrollment = user?.enrollments && user.enrollments.length > 0;
+  const existing = user?.attendances && user.attendances.length > 0 ? user.attendances[0] : null;
 
   // ── Layer 2: Enrollment validation ────────────────────────────────────────
   if (!enrollment) {
@@ -157,21 +185,36 @@ async function submitAttendance({
       "Incorrect attendance code selected");
   }
 
-  // ── All checks passed → Create PRESENT record ─────────────────────────────
-  const attendance = await prisma.attendance.create({
-    data: {
-      sessionId,
-      studentId,
-      status: "PRESENT",
-      submittedCode: String(selectedCode),
-      deviceId,
-      latitude: latitude ?? null,
-      longitude: longitude ?? null,
-      submittedAt,
-    },
-  });
-
-  return { status: "PRESENT", attendance };
+  // ── All checks passed → Create PRESENT record (Safely handling race conditions) ─────────────────────────────
+  try {
+    const attendance = await prisma.attendance.create({
+      data: {
+        sessionId: Number(sessionId),
+        studentId: Number(studentId),
+        status: "PRESENT",
+        submittedCode: String(selectedCode),
+        deviceId,
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
+        submittedAt,
+      },
+    });
+    return { status: "PRESENT", attendance };
+  } catch (error) {
+    if (error.code === 'P2002') {
+      console.warn(`[Attendance Warning] Prevented duplicate submission race condition for session ${sessionId}, student ${studentId}.`);
+      const existingRecord = await prisma.attendance.findUnique({
+        where: { sessionId_studentId: { sessionId: Number(sessionId), studentId: Number(studentId) } }
+      });
+      return { 
+        status: existingRecord?.status || "PRESENT", 
+        reason: "Attendance already submitted", 
+        attendance: existingRecord 
+      };
+    }
+    console.error(`[Attendance Error] DB error during submission:`, error);
+    throw error;
+  }
 }
 
 /**
