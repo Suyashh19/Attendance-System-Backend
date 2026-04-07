@@ -44,5 +44,11 @@ router.delete(
   attendanceController.deleteSubjectHistory
 );
 
+// PUT /api/attendance/session/:sessionId/student/:studentId (Faculty only)
+router.put(
+  "/session/:sessionId/student/:studentId",
+  requireRole("faculty"),
+  attendanceController.editAttendance
+);
 
 module.exports = router;

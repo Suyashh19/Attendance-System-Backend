@@ -92,7 +92,7 @@ async function submitAttendance({
       deviceLocked: true,
       enrollments: { 
         where: { subjectId: session.subjectId },
-        select: { id: true } 
+        select: { id: true, status: true } 
       },
       attendances: { 
         where: { sessionId: Number(sessionId) },
@@ -108,6 +108,11 @@ async function submitAttendance({
   if (!enrollment) {
     return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
       "Student is not enrolled in this subject");
+  }
+
+  if (user.enrollments[0].status !== "APPROVED") {
+    return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
+      "Enrollment is pending approval or rejected");
   }
 
   // ── Layer 3: Duplicate submission check ─────────────────────────────────––
@@ -260,9 +265,9 @@ async function markAbsentees(sessionId) {
   });
   if (!session) throw new Error("Session not found");
 
-  // All enrolled students for this subject
+  // All enrolled and APPROVED students for this subject
   const enrollments = await prisma.enrollment.findMany({
-    where: { subjectId: session.subjectId },
+    where: { subjectId: session.subjectId, status: "APPROVED" },
     select: { studentId: true },
   });
 

@@ -119,6 +119,13 @@ exports.endSession = async (req, res, next) => {
       });
     });
 
+    const attendances = await prisma.attendance.findMany({
+      where: { sessionId },
+      include: {
+        student: { select: { id: true, name: true, prn: true, rollNo: true } }
+      }
+    });
+
     res.json({
       message: "Session ended successfully",
       session: {
@@ -126,6 +133,7 @@ exports.endSession = async (req, res, next) => {
         serverTime: new Date().toISOString()
       },
       markedAbsent: absentStudentIds.length,
+      attendances
     });
   } catch (err) {
     next(err);

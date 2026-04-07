@@ -15,7 +15,7 @@ exports.enrollStudent = async (req, res, next) => {
       return res.status(400).json({ error: "Student is already enrolled in this subject" });
     }
     const enrollment = await prisma.enrollment.create({
-      data: { subjectId: Number(subjectId), studentId: Number(studentId) },
+      data: { subjectId: Number(subjectId), studentId: Number(studentId), status: "APPROVED" },
     });
     res.status(201).json({ message: "Enrollment successful", enrollment });
   } catch (err) {
@@ -77,7 +77,10 @@ exports.getSubjectEnrollments = async (req, res, next) => {
 
     res.json({
       subjectId,
-      students: enrollments.map((e) => e.student),
+      students: enrollments.map((e) => ({
+        ...e.student,
+        status: e.status,
+      })),
     });
   } catch (err) {
     next(err);
@@ -114,6 +117,46 @@ exports.unenrollSubject = async (req, res, next) => {
     });
 
     res.json({ message: "Successfully unenrolled from subject" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Faculty updates enrollment status (Approve/Reject)
+exports.updateEnrollmentStatus = async (req, res, next) => {
+  try {
+    const subjectId = Number(req.params.subjectId);
+    const studentId = Number(req.params.studentId);
+    const { status } = req.body;
+
+    if (!["APPROVED", "REJECTED", "PENDING"].includes(status)) {
+      return res.status(400).json({ error: "Invalid status value" });
+    }
+
+    // Verify faculty owns the subject
+    const facultyId = req.user.userId;
+    const subject = await prisma.subject.findFirst({
+      where: { id: subjectId, facultyId }
+    });
+
+    if (!subject) {
+      return res.status(403).json({ error: "Unauthorized for this subject" });
+    }
+
+    const updated = await prisma.enrollment.update({
+      where: {
+        studentId_subjectId: {
+          studentId,
+          subjectId
+        }
+      },
+      data: { status }
+    });
+
+    res.json({ 
+      message: `Enrollment status updated to ${status}`, 
+      enrollment: updated 
+    });
   } catch (err) {
     next(err);
   }

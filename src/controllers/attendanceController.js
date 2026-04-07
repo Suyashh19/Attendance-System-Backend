@@ -5,6 +5,7 @@
 const { submitAttendance, deleteSubjectHistory } = require("../services/attendanceService");
 const { getAttendanceSummary, getStudentRecord, getGlobalHistory, getHierarchicalHistory } = require("../services/analyticsService");
 const { notifyStudent } = require("../services/notificationService");
+const prisma = require("../config/db");
 
 // Student: Submit attendance code along with GPS coordinates
 exports.submitAttendance = async (req, res, next) => {
@@ -82,6 +83,48 @@ exports.deleteSubjectHistory = async (req, res, next) => {
 
     await deleteSubjectHistory(studentId, subjectId);
     res.json({ message: "Subject history deleted successfully" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Faculty: Edit attendance record manually
+exports.editAttendance = async (req, res, next) => {
+  try {
+    const sessionId = Number(req.params.sessionId);
+    const studentId = Number(req.params.studentId);
+    const { status, reason } = req.body;
+    const facultyId = req.user.userId;
+
+    // Verify faculty owns the session
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, facultyId }
+    });
+
+    if (!session) {
+      return res.status(403).json({ error: "Unauthorized for this session" });
+    }
+
+    const attendance = await prisma.attendance.upsert({
+      where: {
+        sessionId_studentId: { sessionId, studentId }
+      },
+      create: {
+        sessionId,
+        studentId,
+        status,
+        reason: reason || "Manually set by faculty",
+        editedByFaculty: true,
+        submittedAt: new Date()
+      },
+      update: {
+        status,
+        reason: reason || "Manually set by faculty",
+        editedByFaculty: true,
+      }
+    });
+
+    res.json({ message: "Attendance updated successfully", attendance });
   } catch (err) {
     next(err);
   }

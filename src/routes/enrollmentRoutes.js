@@ -38,4 +38,11 @@ router.delete(
   enrollmentController.unenrollSubject
 );
 
+// PUT /api/enrollments/subject/:subjectId/student/:studentId/status
+router.put(
+  "/subject/:subjectId/student/:studentId/status",
+  requireRole("faculty"),
+  enrollmentController.updateEnrollmentStatus
+);
+
 module.exports = router;
