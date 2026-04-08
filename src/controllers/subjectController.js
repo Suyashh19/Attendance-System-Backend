@@ -43,16 +43,23 @@ exports.getSubjects = async (req, res, next) => {
 
     if (role === "faculty") {
       subjects = await prisma.subject.findMany({
-        where: { facultyId: userId },
+        where: { facultyId: Number(userId) },
         include: { _count: { select: { enrollments: true } } },
       });
     } else {
-      // Student: return subjects they are enrolled in
+      // Student: return subjects they are enrolled in, including their enrollment status
       const enrollments = await prisma.enrollment.findMany({
-        where: { studentId: userId },
+        where: { studentId: Number(userId) },
         include: { subject: { include: { faculty: { select: { name: true } } } } },
       });
-      subjects = enrollments.map((e) => e.subject);
+      
+      // Map to subjects but attach the enrollment status to each one
+      subjects = enrollments
+        .filter(e => e.subject) // Safety check: skip if subject was deleted
+        .map((e) => ({
+          ...e.subject,
+          enrollmentStatus: e.status, // "PENDING", "APPROVED", etc.
+        }));
     }
 
     res.json({ subjects });
