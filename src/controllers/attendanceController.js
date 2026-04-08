@@ -49,6 +49,63 @@ exports.getSubjectAnalytics = async (req, res, next) => {
   }
 };
 
+// Faculty: View attendance details for a specific session (all students)
+exports.getSessionAttendance = async (req, res, next) => {
+  try {
+    const sessionId = Number(req.params.sessionId);
+    const facultyId = req.user.userId;
+
+    // Verify session belongs to faculty
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, facultyId },
+      include: { subject: true }
+    });
+
+    if (!session) {
+      return res.status(403).json({ error: "Unauthorized or session not found" });
+    }
+
+    // Get all enrolled students for this subject
+    const enrollments = await prisma.enrollment.findMany({
+      where: { subjectId: session.subjectId, status: "APPROVED" },
+      include: {
+        student: {
+          select: { id: true, name: true, prn: true, rollNo: true }
+        }
+      }
+    });
+
+    // Get attendance records for this session
+    const attendances = await prisma.attendance.findMany({
+      where: { sessionId }
+    });
+
+    // Merge: show students with their attendance status (if exists)
+    const studentsWithStatus = enrollments.map(e => {
+      const attendance = attendances.find(a => a.studentId === e.studentId);
+      return {
+        ...e.student,
+        status: attendance ? attendance.status : "ABSENT",
+        reason: attendance ? attendance.reason : null,
+        editedByFaculty: attendance ? attendance.editedByFaculty : false
+      };
+    });
+
+    res.json({
+      session: {
+        id: session.id,
+        date: session.startTime,
+        subjectName: session.subject.name,
+        subjectCode: session.subject.code,
+        subjectType: session.subject.type
+      },
+      students: studentsWithStatus
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // Student: View their own granular record for a subject
 exports.getMyRecord = async (req, res, next) => {
   try {

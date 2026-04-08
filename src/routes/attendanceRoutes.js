@@ -23,6 +23,13 @@ router.get(
   attendanceController.getSubjectAnalytics
 );
 
+// GET /api/attendance/session/:sessionId (Faculty only)
+router.get(
+  "/session/:sessionId",
+  requireRole("faculty"),
+  attendanceController.getSessionAttendance
+);
+
 // GET /api/attendance/subject/:subjectId/my-record (Student only)
 router.get(
   "/subject/:subjectId/my-record",

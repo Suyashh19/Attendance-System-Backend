@@ -140,6 +140,50 @@ exports.endSession = async (req, res, next) => {
   }
 };
 
+// Faculty: View last 10 sessions across all subjects
+exports.getRecentSessions = async (req, res, next) => {
+  try {
+    const facultyId = req.user.userId;
+
+    const sessions = await prisma.session.findMany({
+      where: { facultyId },
+      orderBy: { startTime: "desc" },
+      take: 10,
+      include: {
+        subject: {
+          select: { name: true, code: true, type: true }
+        }
+      }
+    });
+
+    const sessionsWithStats = await Promise.all(sessions.map(async (session) => {
+      const totalEnrolled = await prisma.enrollment.count({
+        where: { subjectId: session.subjectId }
+      });
+      
+      const presentCount = await prisma.attendance.count({
+        where: { sessionId: session.id, status: "PRESENT" }
+      });
+
+      return {
+        id: session.id,
+        subjectId: session.subjectId,
+        subjectName: session.subject.name,
+        subjectCode: session.subject.code,
+        subjectType: session.subject.type,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        presentCount,
+        totalEnrolled
+      };
+    }));
+
+    res.json({ sessions: sessionsWithStats });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // Generic: View session history for a subject (Faculty)
 exports.getSessionHistory = async (req, res, next) => {
   try {
