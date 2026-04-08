@@ -216,7 +216,11 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
   } else if (startDate || endDate) {
     sessionQuery.where.startTime = {};
     if (startDate) sessionQuery.where.startTime.gte = new Date(startDate);
-    if (endDate) sessionQuery.where.startTime.lte = new Date(endDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      sessionQuery.where.startTime.lte = end;
+    }
   }
 
   const sessions = await prisma.session.findMany(sessionQuery);

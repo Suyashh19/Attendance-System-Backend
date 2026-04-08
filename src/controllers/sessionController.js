@@ -103,28 +103,55 @@ exports.endSession = async (req, res, next) => {
 
     const session = await endSession(sessionId, facultyId);
 
+    // Fetch subject for name
+    const subject = await prisma.subject.findUnique({ where: { id: session.subjectId } });
+
     // Auto-mark non-submitters as ABSENT
     const absentStudentIds = await markAbsentees(sessionId);
 
-    // Notify all students in subject that session ended
+    // Notify all students in subject room via Socket that session ended
     broadcastSessionEnded(session.subjectId, sessionId);
     
-    // Also explicitly notify the now-absent students
-    absentStudentIds.forEach((studentId) => {
-      notifyStudent(studentId, {
-        status: "ABSENT",
-        reason: "Did not submit attendance",
-        attendance: null,
-        sessionId
-      });
+    // Fetch ALL enrolled students and their attendance for this specific session
+    const enrollments = await prisma.enrollment.findMany({
+      where: { subjectId: session.subjectId, status: "APPROVED" },
+      include: { student: { select: { id: true, pushToken: true } } }
     });
 
     const attendances = await prisma.attendance.findMany({
-      where: { sessionId },
-      include: {
-        student: { select: { id: true, name: true, prn: true, rollNo: true } }
+      where: { sessionId }
+    });
+
+    const pushMessages = [];
+    enrollments.forEach((e) => {
+      const attendance = attendances.find(a => a.studentId === e.studentId);
+      const status = attendance ? attendance.status : "ABSENT";
+      
+      // 1. Socket Notification
+      notifyStudent(e.studentId, {
+        status,
+        sessionId,
+        reason: attendance ? attendance.reason : "Did not submit",
+        subjectName: subject?.name
+      });
+
+      // 2. Prepare Push Notification
+      if (e.student.pushToken) {
+        pushMessages.push({
+          to: e.student.pushToken,
+          sound: "default",
+          title: `Attendance: ${subject?.name || "Session Ended"}`,
+          body: `Your attendance is marked as ${status} for ${subject?.code || "class"}.`,
+          data: { sessionId, status, subjectId: session.subjectId }
+        });
       }
     });
+
+    // 3. Send Push Notifications in chunks
+    if (pushMessages.length > 0) {
+      const { sendManyPushNotifications } = require("../services/notificationService");
+      sendManyPushNotifications(pushMessages).catch(err => console.error("[Push Error]", err));
+    }
 
     res.json({
       message: "Session ended successfully",
@@ -133,7 +160,6 @@ exports.endSession = async (req, res, next) => {
         serverTime: new Date().toISOString()
       },
       markedAbsent: absentStudentIds.length,
-      attendances
     });
   } catch (err) {
     next(err);

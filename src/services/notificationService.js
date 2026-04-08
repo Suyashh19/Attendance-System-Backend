@@ -100,8 +100,17 @@ function broadcastSessionEnded(subjectId, sessionId) {
  * @param {number} studentId
  * @param {Object} result - { status, reason?, sessionId }
  */
-function notifyStudent(studentId, result) {
+/**
+ * Send an individual attendance result directly to the student's socket.
+ * Also optionally sends a push notification if pushToken is provided.
+ *
+ * @param {number} studentId
+ * @param {Object} result - { status, reason?, sessionId, subjectName?, pushToken? }
+ */
+async function notifyStudent(studentId, result) {
   const io = getIO();
+  
+  // 1. Socket.IO emission
   io.to(`user_${studentId}`).emit("attendance_result", {
     status: result.status,
     reason: result.reason ?? null,
@@ -109,8 +118,38 @@ function notifyStudent(studentId, result) {
     message:
       result.status === "PRESENT"
         ? "✅ Attendance marked PRESENT"
-        : `❌ Attendance marked ${result.status}: ${result.reason}`,
+        : `❌ Attendance marked ${result.status}: ${result.reason || "Did not submit"}`,
   });
+
+  // 2. Push Notification (Individual)
+  if (result.pushToken) {
+    await sendPushNotifications(
+      [result.pushToken],
+      `Attendance: ${result.subjectName || "Report"}`,
+      `Your attendance is marked as ${result.status}.`,
+      { sessionId: result.sessionId, status: result.status }
+    );
+  }
 }
 
-module.exports = { broadcastSessionStarted, broadcastSessionEnded, notifyStudent };
+/**
+ * Send multiple personalized push notifications in chunks.
+ * @param {Array<{to: string, title: string, body: string, data: Object}>} messages 
+ */
+async function sendManyPushNotifications(messages) {
+  const chunks = expo.chunkPushNotifications(messages);
+  for (let chunk of chunks) {
+    try {
+      await expo.sendPushNotificationsAsync(chunk);
+    } catch (error) {
+      console.error("Error sending chunked push notifications:", error);
+    }
+  }
+}
+
+module.exports = { 
+  broadcastSessionStarted, 
+  broadcastSessionEnded, 
+  notifyStudent,
+  sendManyPushNotifications 
+};
