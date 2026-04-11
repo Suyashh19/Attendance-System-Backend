@@ -228,8 +228,13 @@ const createAndSendOtp = async (email) => {
     }
   });
 
-  // Async email send
-  sendOtpEmail(email, otpCode).catch(console.error);
+  // Synchronous email send to ensure it runs before response
+  try {
+    await sendOtpEmail(email, otpCode);
+  } catch (error) {
+    console.error("Failed to send OTP email during creation:", error);
+    throw error;
+  }
 };
 
 // --- OTP Controllers ---
