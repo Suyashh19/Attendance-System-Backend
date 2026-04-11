@@ -6,7 +6,7 @@ const { generateOTP } = require("../services/otpService");
 
 // REGISTER
 exports.register = async (req, res) => {
-  const { email, password, name, rollNo, prn, deviceId, role, otp } = req.body;
+  const { email, password, name, rollNo, prn, deviceId, role, otp } = req.body || {};
 
   try {
     if (!deviceId) return res.status(400).json({ error: "Device ID is required for registration" });
@@ -65,7 +65,7 @@ exports.register = async (req, res) => {
 
 // LOGIN
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password } = req.body || {};
 
   try {
     const user = await prisma.user.findUnique({
@@ -112,7 +112,7 @@ exports.getProfile = async (req, res) => {
 
 // SAVE PUSH TOKEN
 exports.savePushToken = async (req, res) => {
-  const { token } = req.body;
+  const { token } = req.body || {};
   const userId = req.user.userId;
 
   if (!token) return res.status(400).json({ error: "Token is required" });
@@ -132,7 +132,7 @@ exports.savePushToken = async (req, res) => {
 
 // UPDATE PRN (ONE-TIME FOR STUDENTS)
 exports.updatePrn = async (req, res) => {
-  const { prn } = req.body;
+  const { prn } = req.body || {};
   const userId = req.user.userId;
 
   if (!prn) return res.status(400).json({ error: "PRN is required" });
@@ -235,7 +235,7 @@ const createAndSendOtp = async (email) => {
 // --- OTP Controllers ---
 
 exports.sendSignupOtp = async (req, res) => {
-  const { email } = req.body;
+  const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: "Email is required" });
 
   try {
@@ -254,7 +254,7 @@ exports.sendSignupOtp = async (req, res) => {
 };
 
 exports.verifySignupOtp = async (req, res) => {
-  const { email, otp } = req.body;
+  const { email, otp } = req.body || {};
   if (!email || !otp) return res.status(400).json({ error: "Email and OTP are required" });
 
   try {
@@ -271,7 +271,7 @@ exports.verifySignupOtp = async (req, res) => {
 };
 
 exports.forgotPassword = async (req, res) => {
-  const { email } = req.body;
+  const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: "Email is required" });
 
   try {
@@ -291,7 +291,7 @@ exports.forgotPassword = async (req, res) => {
 };
 
 exports.resetPassword = async (req, res) => {
-  const { email, otp, newPassword } = req.body;
+  const { email, otp, newPassword } = req.body || {};
   if (!email || !otp || !newPassword) return res.status(400).json({ error: "Email, OTP, and new password are required" });
 
   try {
@@ -318,7 +318,7 @@ exports.resetPassword = async (req, res) => {
 };
 
 exports.updatePassword = async (req, res) => {
-  const { currentPassword, newPassword } = req.body;
+  const { currentPassword, newPassword } = req.body || {};
   const userId = req.user.userId;
 
   if (!currentPassword || !newPassword) return res.status(400).json({ error: "Both current and new password are required" });
