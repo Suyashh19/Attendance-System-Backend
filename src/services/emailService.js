@@ -15,7 +15,7 @@ const sendOtpEmail = async (to, otp) => {
   try {
     console.log(`[DEBUG] Executing resend.emails.send() for: ${to}`);
     const result = await resend.emails.send({
-      from: "Attendance App <noreply@mail.liveattend.me>",
+      from: "Attendance App <onboarding@mail.liveattend.me>",
       to,
       subject: "Your OTP Code",
       html: `<p>Your OTP is <b>${otp}</b>. It expires in 5 minutes.</p>`,
