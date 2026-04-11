@@ -9,7 +9,8 @@ const authMiddleware = (req, res, next) => {
 
   // Handle "Bearer <token>" format
   const token = authHeader.startsWith("Bearer ") 
-    ? authHeader.split(" ")[1] 
+    ? authHeader.split(" ")[1]
+     
     : authHeader;
 
   try {
