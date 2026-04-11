@@ -9,11 +9,12 @@ A production-ready Node.js + Express backend designed to power a frictionless, h
 ## 📌 1. Core Verification Pipeline
 The core innovation is our `mark-attendance` flow, which validates student submissions sequentially in under ~80ms using minimal database connections:
 
-1. **Session Active Validation**: Ensures strict enforcement of 15-to-20 second submission windows.
-2. **Device Hardware Binding**: Locks students to a single physical device UUID (`deviceId`) permanently. Cross-device cheating triggers instant, logged rejections.
-3. **GPS Proximity Geofencing (Haversine)**: Calculates precise distances between a student's coordinate and the classroom's anchor point, accounting for mobile GPS drift `accuracy` (maximum 50m fallback tolerance).
-4. **Code Strictness**: Validates selected tokens against a randomized set of fake 3-digit identifiers.
-5. **Anti-Spam Race Condition Protection**: Internal Prisma interception traps high-frequency duplicate submissions (`P2002`), returning a graceful 'Already Marked' response to the frontend without risking server crashes.
+1. **Identity & Email Verification**: Enforces 6-digit OTP verification via **Resend** during registration and password recovery to ensure email ownership.
+2. **Session Active Validation**: Ensures strict enforcement of 15-to-20 second submission windows.
+3. **Device Hardware Binding**: Locks students to a single physical device UUID (`deviceId`) permanently. Cross-device cheating triggers instant rejections.
+4. **GPS Proximity Geofencing (Haversine)**: Calculates precise distances between a student's coordinate and the classroom's anchor point, accounting for mobile GPS drift `accuracy` (maximum 50m tolerance).
+5. **Code Strictness**: Validates selected tokens against a randomized set of 3-digit identifiers.
+6. **Anti-Spam Race Condition Protection**: Internal Prisma interception traps high-frequency duplicate submissions (`P2002`).
 
 ## ⚡ 2. Performance & Scalability Enhancements
 The architecture is aggressively optimized for **bursty traffic spikes** (e.g., a massive classroom clicking submit within the same 5 milliseconds):
@@ -31,6 +32,7 @@ The architecture is aggressively optimized for **bursty traffic spikes** (e.g., 
 * **Database Engine**: PostgreSQL (Neon Serverless)
 * **ORM Toolkit**: Prisma
 * **Real-Time Layer**: Socket.IO (Event-driven broadcasts)
+* **Email Engine**: Resend (Transactional OTP delivery)
 * **Push Notifications**: Expo Server SDK (`expo-server-sdk`)
 * **Authentication Security**: JWT (`jsonwebtoken`) & Hash logic (`bcrypt`)
 
@@ -77,6 +79,7 @@ Create a `.env` dynamically configuring the connection pools:
 ```env
 DATABASE_URL="postgresql://user:password@hostname.../db?sslmode=require&connection_limit=20&pool_timeout=15"
 JWT_SECRET="your_secure_secret"
+RESEND_API_KEY="re_your_api_key_from_resend"
 PORT=5000
 ```
 
@@ -113,6 +116,9 @@ The backend seamlessly batches and fires out-of-band push alerts to registered M
 A rich **Postman Collection** is included (`postman_collection.json`) encapsulating the headers, route params, and authorization checks. 
 
 **Critical Core Endpoints:**
+- `POST /api/auth/send-signup-otp` (Request registration code)
+- `POST /api/auth/verify-signup-otp` (Validate code for registration)
+- `POST /api/auth/forgot-password` (Trigger password recovery code)
 - `POST /api/auth/login` (Obtain Access Matrix)
 - `POST /api/sessions/start` (Initializes time bounds)
 - `POST /api/attendance/submit` (The Heavy-Lift Validation Route)
