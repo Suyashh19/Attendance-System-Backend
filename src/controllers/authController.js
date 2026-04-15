@@ -48,7 +48,8 @@ exports.register = async (req, res) => {
         name: name || null,
         rollNo: rollNo || null,
         prn: role === "student" ? prn : null,
-        deviceId: deviceId || null
+        deviceId: deviceId || null,
+        deviceLocked: !!deviceId // Lock immediately if ID is provided
       },
       select: { id: true, email: true, role: true, name: true, rollNo: true, prn: true }
     });
