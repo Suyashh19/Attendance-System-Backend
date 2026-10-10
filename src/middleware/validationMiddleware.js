@@ -60,9 +60,8 @@ const validateStartSession = validate({
 
 const validateSubmitAttendance = validate({
   sessionId:    { required: true },
-  selectedCode: { required: true },
+  code:         { required: true },
   deviceId:     { required: true, type: "string" },
-  accuracy:     { required: false, type: "number" },
 });
 
 module.exports = {

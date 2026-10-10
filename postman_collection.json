@@ -81,7 +81,7 @@
             "method": "POST",
             "header": [ { "key": "Authorization", "value": "{{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
             "url": { "raw": "{{baseUrl}}/api/sessions/start", "host": [ "{{baseUrl}}" ], "path": [ "api", "sessions", "start" ] },
-            "body": { "mode": "raw", "raw": "{\n    \"subjectId\": 1,\n    \"latitude\": 12.9715987,\n    \"longitude\": 77.5945627\n}" }
+            "body": { "mode": "raw", "raw": "{\n    \"subjectId\": 1,\n    \"date\": \"2026-03-11\",\n    \"startTime\": \"10:00\",\n    \"endTime\": \"11:00\"\n}" }
           }
         },
         {
@@ -111,7 +111,7 @@
             "method": "POST",
             "header": [ { "key": "Authorization", "value": "{{token}}" }, { "key": "Content-Type", "value": "application/json" } ],
             "url": { "raw": "{{baseUrl}}/api/attendance/submit", "host": [ "{{baseUrl}}" ], "path": [ "api", "attendance", "submit" ] },
-            "body": { "mode": "raw", "raw": "{\n    \"sessionId\": 1,\n    \"selectedCode\": \"472\",\n    \"deviceId\": \"A1B2C3D4\",\n    \"latitude\": 12.9715,\n    \"longitude\": 77.5946\n}" }
+            "body": { "mode": "raw", "raw": "{\n    \"sessionId\": 1,\n    \"code\": \"4721\",\n    \"deviceId\": \"A1B2C3D4\"\n}" }
           }
         },
         {

@@ -74,11 +74,11 @@ model Session {
   id          Int     @id @default(autoincrement())
   subjectId   Int
   facultyId   Int
-  correctCode String  // 3-digit code e.g. "472"
-  fakeOptions String  // JSON array stored as string e.g. '["218","472","956","103"]'
+  correctCode String  // 4-digit code e.g. "4721"
+  fakeOptions String  // LEGACY: unused since manual code entry, always "[]"
   isActive    Boolean @default(true)
 
-  // Faculty GPS anchor point
+  // LEGACY: GPS was removed, these stay null
   latitude    Float?
   longitude   Float?
 

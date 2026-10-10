@@ -1,40 +1,24 @@
 /**
  * sessionService.js
  * Handles attendance session lifecycle: creation, code generation,
- * option shuffling, and retrieval.
+ * and retrieval.
  */
 
+const crypto = require("crypto");
 const prisma = require("../config/db");
 
 // ─── Code Generation ──────────────────────────────────────────────────────────
 
-/**
- * Generate a 3-digit code string (100–999).
- * @returns {string} e.g. "472"
- */
-function generateCode() {
-  return String(Math.floor(Math.random() * 900) + 100);
-}
+const CODE_LENGTH = 4;
+const WINDOW_SECONDS = 15;
 
 /**
- * Build a shuffled option array including the correct code + 3 fake decoys.
- * All codes are unique 3-digit numbers.
- * @param {string} correctCode
- * @returns {string[]} 4-element shuffled array
+ * Generate the numeric code the faculty shows and students type in.
+ * @returns {string} e.g. "4721"
  */
-function generateFakeOptions(correctCode) {
-  const options = new Set([correctCode]);
-  while (options.size < 4) {
-    options.add(String(Math.floor(Math.random() * 900) + 100));
-  }
-  // Fisher-Yates shuffle
-  const arr = Array.from(options);
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  console.log(`[DEBUG] Generated 4 shuffled options (including ${correctCode}):`, arr);
-  return arr;
+function generateCode() {
+  const min = 10 ** (CODE_LENGTH - 1);
+  return String(crypto.randomInt(min, min * 10));
 }
 
 // ─── Session CRUD ─────────────────────────────────────────────────────────────
@@ -50,11 +34,9 @@ function generateFakeOptions(correctCode) {
  * @param {string} data.date
  * @param {string} data.startTime
  * @param {string} data.endTime
- * @param {number} [data.latitude]  - Faculty GPS anchor latitude
- * @param {number} [data.longitude] - Faculty GPS anchor longitude
- * @returns {Promise<Object>} The created Session with parsed fakeOptions
+ * @returns {Promise<Object>} The created Session
  */
-async function createSession({ subjectId, classId, facultyId, date, startTime, endTime, latitude, longitude }) {
+async function createSession({ subjectId, classId, facultyId, date, startTime, endTime }) {
   // Use subjectId or classId (for backward/forward compatibility)
   const targetSubjectId = Number(subjectId || classId);
 
@@ -63,9 +45,7 @@ async function createSession({ subjectId, classId, facultyId, date, startTime, e
     facultyId,
     date,
     startTime,
-    endTime,
-    latitude,
-    longitude
+    endTime
   });
   
   if (!targetSubjectId) {
@@ -98,7 +78,6 @@ async function createSession({ subjectId, classId, facultyId, date, startTime, e
   }
 
   const correctCode = generateCode();
-  const fakeOptions = generateFakeOptions(correctCode);
 
   try {
     console.log("[DEBUG] Attempting prisma.session.create with data mapping...");
@@ -111,7 +90,7 @@ async function createSession({ subjectId, classId, facultyId, date, startTime, e
       // 2. IMPORTANT: startTime and endTime in DB are DateTime. 
       // Do NOT pass strings from frontend ("10:00") directly to them.
       startTime: new Date(), // Actual start is NOW
-      windowExpiry: new Date(Date.now() + 15000), // 15-second attendance window
+      windowExpiry: new Date(Date.now() + WINDOW_SECONDS * 1000), // 15-second attendance window
       endTime: null,         // To be set when session ends
       
       // 3. Store the scheduled string times in correct TEXT fields
@@ -119,9 +98,7 @@ async function createSession({ subjectId, classId, facultyId, date, startTime, e
       scheduledEndTime: endTime || null,   
       
       correctCode,
-      fakeOptions: JSON.stringify(fakeOptions),
-      latitude: latitude != null ? Number(latitude) : null,
-      longitude: longitude != null ? Number(longitude) : null,
+      fakeOptions: "[]", // legacy NOT NULL column, no longer used
       isActive: true,
       status: "active",
     };
@@ -135,10 +112,7 @@ async function createSession({ subjectId, classId, facultyId, date, startTime, e
 
     console.log("[DEBUG] Session created successfully:", session.id);
 
-    return {
-      ...session,
-      fakeOptions, // parsed array for convenience
-    };
+    return session;
   } catch (error) {
     // CRITICAL: Log the actual error for debugging
     console.error("❌ Prisma Session Creation Failed!");
@@ -181,35 +155,25 @@ async function endSession(sessionId, facultyId) {
  * @returns {Promise<Object|null>}
  */
 async function getActiveSession(subjectId) {
-  const session = await prisma.session.findFirst({
+  return prisma.session.findFirst({
     where: { subjectId, isActive: true },
     include: { subject: { select: { name: true, code: true } } },
   });
-
-  if (!session) return null;
-
-  return {
-    ...session,
-    fakeOptions: JSON.parse(session.fakeOptions),
-  };
 }
 
 /**
- * Get a session by ID with parsed fakeOptions.
+ * Get a session by ID.
  * @param {number} sessionId
  * @returns {Promise<Object|null>}
  */
 async function getSessionById(sessionId) {
-  const session = await prisma.session.findUnique({
+  return prisma.session.findUnique({
     where: { id: sessionId },
     include: {
       subject: { select: { name: true, code: true } },
       faculty: { select: { name: true, email: true } },
     },
   });
-  if (!session) return null;
-
-  return { ...session, fakeOptions: JSON.parse(session.fakeOptions) };
 }
 
 /**
@@ -230,14 +194,14 @@ async function getSessionHistory(subjectId) {
 
   return sessions.map((s) => ({
     ...s,
-    fakeOptions: JSON.parse(s.fakeOptions),
     attendanceCount: s._count.attendances,
   }));
 }
 
 module.exports = {
+  CODE_LENGTH,
+  WINDOW_SECONDS,
   generateCode,
-  generateFakeOptions,
   createSession,
   endSession,
   getActiveSession,

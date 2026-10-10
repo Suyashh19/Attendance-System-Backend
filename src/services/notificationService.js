@@ -6,6 +6,7 @@
 
 const { getIO } = require("../config/socket");
 const { Expo } = require("expo-server-sdk");
+const { CODE_LENGTH, WINDOW_SECONDS } = require("./sessionService");
 
 // Create a new Expo SDK client
 const expo = new Expo();
@@ -44,7 +45,8 @@ async function sendPushNotifications(tokens, title, body, data = {}) {
 
 /**
  * Broadcast a new attendance session to all students in the subject room.
- * Students in the room receive: session details + shuffled options.
+ * Students in the room receive the session details only. The code is never sent;
+ * they type it in from the faculty's screen.
  * Also sends push notifications to students.
  *
  * @param {number} subjectId
@@ -60,10 +62,11 @@ async function broadcastSessionStarted(subjectId, sessionData, pushTokens = []) 
     subjectId: sessionData.subjectId,
     subjectName: sessionData.subject?.name,
     subjectCode: sessionData.subject?.code,
-    options: sessionData.fakeOptions, // shuffled — correctCode is NOT sent here
+    codeLength: CODE_LENGTH,
     startTime: sessionData.startTime,
-    windowSeconds: 15, // Fix for frontend NaN issue
-    timeLimitSeconds: 15,
+    windowExpiry: sessionData.windowExpiry,
+    windowSeconds: WINDOW_SECONDS, // Fix for frontend NaN issue
+    timeLimitSeconds: WINDOW_SECONDS,
     serverTime: new Date().toISOString(),
   });
 
@@ -133,6 +136,16 @@ async function notifyStudent(studentId, result) {
 }
 
 /**
+ * Push the running PRESENT count to the faculty who owns the session.
+ * @param {number} facultyId
+ * @param {number} sessionId
+ * @param {number} presentCount
+ */
+function notifyFacultyCount(facultyId, sessionId, presentCount) {
+  getIO().to(`user_${facultyId}`).emit("attendance_count", { sessionId, presentCount });
+}
+
+/**
  * Send multiple personalized push notifications in chunks.
  * @param {Array<{to: string, title: string, body: string, data: Object}>} messages 
  */
@@ -151,5 +164,6 @@ module.exports = {
   broadcastSessionStarted, 
   broadcastSessionEnded, 
   notifyStudent,
+  notifyFacultyCount,
   sendManyPushNotifications 
 };

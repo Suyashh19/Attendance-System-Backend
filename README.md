@@ -1,8 +1,8 @@
 # 🚀 Real-Time Intelligent Attendance System (Backend)
 
-### 🔐 Secure • 📡 Real-Time • 📍 Verified • ⚡ Ultra-Performant
+### 🔐 Secure • 📡 Real-Time • ✅ Verified • ⚡ Ultra-Performant
 
-A production-ready Node.js + Express backend designed to power a frictionless, highly-secure student attendance system. By leveraging a multi-layered verification pipeline, real-time WebSockets, robust PostgreSQL bindings, and dynamic geofencing, this architecture effectively eliminates proxy attendance, device sharing, and location spoofing. 
+A production-ready Node.js + Express backend designed to power a frictionless, highly-secure student attendance system. By leveraging a multi-layered verification pipeline, real-time WebSockets, robust PostgreSQL bindings, and a short-lived classroom code, this architecture is built to curb proxy attendance and device sharing. 
 
 ---
 
@@ -10,11 +10,10 @@ A production-ready Node.js + Express backend designed to power a frictionless, h
 The core innovation is our `mark-attendance` flow, which validates student submissions sequentially in under ~80ms using minimal database connections:
 
 1. **Identity & Email Verification**: Enforces 6-digit OTP verification via **Resend** during registration and password recovery to ensure email ownership.
-2. **Session Active Validation**: Ensures strict enforcement of 15-to-20 second submission windows.
+2. **Session Active Validation**: Ensures strict enforcement of the 15-second submission window.
 3. **Device Hardware Binding**: Locks students to a single physical device UUID (`deviceId`) permanently. Cross-device cheating triggers instant rejections.
-4. **GPS Proximity Geofencing (Haversine)**: Calculates precise distances between a student's coordinate and the classroom's anchor point, accounting for mobile GPS drift `accuracy` (maximum 50m tolerance).
-5. **Code Strictness**: Validates selected tokens against a randomized set of 3-digit identifiers.
-6. **Anti-Spam Race Condition Protection**: Internal Prisma interception traps high-frequency duplicate submissions (`P2002`).
+4. **Manual Code Entry**: The faculty shows a random 4-digit code; each student types it in. The code is never sent to student devices, and a student gets 3 tries before the attempt is marked `INVALID`.
+5. **Anti-Spam Race Condition Protection**: Internal Prisma interception traps high-frequency duplicate submissions (`P2002`).
 
 ## ⚡ 2. Performance & Scalability Enhancements
 The architecture is aggressively optimized for **bursty traffic spikes** (e.g., a massive classroom clicking submit within the same 5 milliseconds):
@@ -49,7 +48,7 @@ src/
 ├── middleware/         # Security layers: JWT checks, Role guards, Input sanitizers
 ├── models/             # Application structural prototypes 
 ├── routes/             # API definition endpoints
-├── services/           # Heavy Operations: (Geofencing math, Analytics mapping, Expo notifications)
+├── services/           # Heavy Operations: (Attendance verification, Analytics mapping, Expo notifications)
 ├── sockets/            # Live Socket.IO room management (subject_123, user_456)
 ├── utils/              # Calculation helpers
 └── app.js              # Express app boosting
@@ -102,9 +101,10 @@ npm run dev
 Socket authentication requires injecting a valid JWT as a client query parameter.
 
 **Client Listens To:**
-- `session_started` : Broadcasts to `subject_{id}` rooms with session timers & shuffled fake options immediately upon class start.
+- `session_started` : Broadcasts to `subject_{id}` rooms with session timers and the code length immediately upon class start (the code itself is not sent).
 - `session_ended` : Broadcast lock closures.
-- `attendance_result` : Directed individually to `user_{id}` private rooms containing success payloads (`PRESENT`, `RETRY_REQUIRED`, or `INVALID` failures).
+- `attendance_result` : Directed individually to `user_{id}` private rooms containing the final result (`PRESENT` or `INVALID`).
+- `attendance_count` : Sent to the faculty's `user_{id}` room with the running `presentCount` for the live session.
 
 **Expo Push Notifications:**
 The backend seamlessly batches and fires out-of-band push alerts to registered Mobile devices whenever critical lifecycle events (like session activations) trigger.
@@ -128,4 +128,4 @@ A rich **Postman Collection** is included (`postman_collection.json`) encapsulat
 
 ## 👨‍💻 Maintainer
 
-Designed as the core brain mapping spatial awareness and strict timeline enforcement into educational and corporate attendance verifications.
+Designed as the core brain mapping device binding and strict timeline enforcement into educational and corporate attendance verifications.

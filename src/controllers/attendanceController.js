@@ -4,34 +4,42 @@
 
 const { submitAttendance, deleteSubjectHistory } = require("../services/attendanceService");
 const { getAttendanceSummary, getStudentRecord, getGlobalHistory, getHierarchicalHistory } = require("../services/analyticsService");
-const { notifyStudent } = require("../services/notificationService");
+const { notifyStudent, notifyFacultyCount } = require("../services/notificationService");
 const prisma = require("../config/db");
 
-// Student: Submit attendance code along with GPS coordinates
+// Student: Submit the attendance code typed from the faculty's screen
 exports.submitAttendance = async (req, res, next) => {
   try {
     const studentId = req.user.userId;
-    const { sessionId, selectedCode, deviceId, latitude, longitude, accuracy, isRetry } = req.body;
-    
+    const { sessionId, code, deviceId } = req.body;
+
     // Run the multi-layer pipeline
     const result = await submitAttendance({
       sessionId: Number(sessionId),
       studentId: Number(studentId),
-      selectedCode,
+      code,
       deviceId,
-      latitude,
-      longitude,
-      accuracy,
-      isRetry: !!isRetry,
     });
 
-    // Notify student via private socket room asynchronously
-    notifyStudent(studentId, { ...result, sessionId });
+    // A wrong code with attempts left is not a final result, so nothing is broadcast
+    if (result.status !== "WRONG_CODE") {
+      // Notify student via private socket room asynchronously
+      notifyStudent(studentId, { ...result, sessionId });
+    }
+
+    // Keep the faculty's live present count in sync
+    if (result.status === "PRESENT" && result.facultyId) {
+      prisma.attendance
+        .count({ where: { sessionId: Number(sessionId), status: "PRESENT" } })
+        .then((presentCount) => notifyFacultyCount(result.facultyId, Number(sessionId), presentCount))
+        .catch((err) => console.error("[Attendance Count Error]", err));
+    }
 
     res.json({
       message: `Attendance processing finished with status: ${result.status}`,
       status: result.status,
       reason: result.reason,
+      attemptsLeft: result.attemptsLeft,
     });
   } catch (err) {
     next(err);

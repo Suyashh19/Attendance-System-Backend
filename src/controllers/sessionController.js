@@ -4,6 +4,8 @@
  */
 
 const {
+  CODE_LENGTH,
+  WINDOW_SECONDS,
   createSession,
   endSession,
   getActiveSession,
@@ -21,7 +23,7 @@ const prisma = require("../config/db");
 exports.startSession = async (req, res, next) => {
   try {
     console.log("[DEBUG] Received startSession request:", req.body);
-    const { subjectId, date, startTime, endTime, latitude, longitude } = req.body;
+    const { subjectId, date, startTime, endTime } = req.body;
     const facultyId = req.user.userId;
 
     if (!subjectId) {
@@ -43,9 +45,7 @@ exports.startSession = async (req, res, next) => {
       facultyId, 
       date, 
       startTime, 
-      endTime, 
-      latitude: latitude != null ? Number(latitude) : null, 
-      longitude: longitude != null ? Number(longitude) : null 
+      endTime
     });
 
     // 1. Fetch enrolled students' push tokens
@@ -67,10 +67,10 @@ exports.startSession = async (req, res, next) => {
         id: session.id,
         subjectId: session.subjectId,
         correctCode: session.correctCode,
-        options: session.fakeOptions, // shuffled codes including correct one
+        codeLength: CODE_LENGTH,
         startTime: session.startTime,
         windowExpiry: session.windowExpiry, // Authoritative source
-        windowSeconds: 15,
+        windowSeconds: WINDOW_SECONDS,
         serverTime: new Date().toISOString(),
       },
     });
@@ -236,10 +236,10 @@ exports.getActiveSession = async (req, res, next) => {
       session: {
         id: session.id,
         subjectId: session.subjectId,
-        options: session.fakeOptions,
+        codeLength: CODE_LENGTH,
         startTime: session.startTime,
         windowExpiry: session.windowExpiry,
-        windowSeconds: 15,
+        windowSeconds: WINDOW_SECONDS,
         serverTime: new Date().toISOString(),
       },
     });

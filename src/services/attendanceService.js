@@ -8,18 +8,19 @@
  *   2. Enrollment validation
  *   3. Device ID validation
  *   4. Time-bound check (≤ 15 seconds from session start)
- *   5. GPS proximity check (≤ 50 m from session location)
- *   6. Correct code validation
+ *   5. Correct code validation (code typed manually by the student)
  *
- * Returns: { status: "PRESENT"|"INVALID", reason?: string, attendance }
+ * Returns: { status: "PRESENT"|"INVALID"|"WRONG_CODE", reason?: string, attendance }
  */
 
 const prisma = require("../config/db");
 const { validateDevice } = require("./deviceService");
-const { isWithinRadius } = require("./locationService");
 
 const TIME_LIMIT_SECONDS = 20;
-const LOCATION_RADIUS_METRES = 100;
+const MAX_CODE_ATTEMPTS = 3;
+
+// Wrong-code tries per student per session (RAM only; the window is 15 seconds)
+const codeAttempts = new Map();
 
 // Simple internal session cache (lives purely in RAM, highly efficient)
 const sessionCache = new Map();
@@ -51,35 +52,29 @@ async function getSessionCached(sessionId) {
  * @param {Object} params
  * @param {number} params.sessionId
  * @param {number} params.studentId
- * @param {string} params.selectedCode
+ * @param {string} params.code          - Code typed by the student
  * @param {string} params.deviceId
- * @param {number} params.latitude
- * @param {number} params.longitude
- * @param {number} [params.accuracy]      - GPS accuracy (metres)
  * @returns {Promise<{ status: string, reason?: string, attendance: Object }>}
  */
 async function submitAttendance({
   sessionId,
   studentId,
-  selectedCode,
+  code,
   deviceId,
-  latitude,
-  longitude,
-  accuracy,
-  isRetry = false,
 }) {
   const submittedAt = new Date();
+  const submittedCode = code != null ? String(code).trim() : null;
 
   // ── Optimization: In-Memory cache for session ─────────────────────────────
   // We fetch the session using our 2-second RAM cache to prevent DB connection exhaustion under high load.
   const session = await getSessionCached(sessionId);
 
   if (!session) {
-    return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
+    return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
       "Session does not exist");
   }
   if (!session.isActive) {
-    return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
+    return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
       "Session is no longer active");
   }
 
@@ -106,12 +101,12 @@ async function submitAttendance({
 
   // ── Layer 2: Enrollment validation ────────────────────────────────────────
   if (!enrollment) {
-    return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
+    return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
       "Student is not enrolled in this subject");
   }
 
   if (user.enrollments[0].status !== "APPROVED") {
-    return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
+    return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
       "Enrollment is pending approval or rejected");
   }
 
@@ -128,7 +123,7 @@ async function submitAttendance({
   // Optimized: Use already fetched 'user' data to avoid findUnique inside validateDevice
   const deviceCheck = await validateDevice(studentId, deviceId, user);
   if (!deviceCheck.valid) {
-    return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
+    return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
       deviceCheck.reason);
   }
 
@@ -139,55 +134,30 @@ async function submitAttendance({
 
   if (submittedAt.getTime() > expiryTime) {
     const overdue = Math.round((submittedAt.getTime() - expiryTime) / 1000);
-    return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
+    return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
       `Attendance window expired (${overdue}s ago)`);
   }
 
-  // ── Layer 6: GPS proximity check (radius check with accuracy handling) ────
-  let locationResult = { valid: true };
-  if (session.latitude !== null && session.longitude !== null) {
-    if (latitude === undefined || latitude === null || longitude === undefined || longitude === null) {
-      return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
-        "GPS location is required for this session");
+  // ── Layer 6: Correct code validation ──────────────────────────────────────
+  if (submittedCode !== String(session.correctCode)) {
+    const key = `${sessionId}:${studentId}`;
+    const used = (codeAttempts.get(key) || 0) + 1;
+
+    // A typo should not cost the student the lecture: allow a few tries before locking.
+    if (used < MAX_CODE_ATTEMPTS) {
+      if (used === 1) setTimeout(() => codeAttempts.delete(key), 60000).unref();
+      codeAttempts.set(key, used);
+      const attemptsLeft = MAX_CODE_ATTEMPTS - used;
+      return {
+        status: "WRONG_CODE",
+        reason: `Incorrect code. ${attemptsLeft} attempt${attemptsLeft === 1 ? "" : "s"} left.`,
+        attemptsLeft,
+      };
     }
 
-    locationResult = isWithinRadius(
-      session.latitude,
-      session.longitude,
-      latitude,
-      longitude,
-      accuracy,
-      LOCATION_RADIUS_METRES,
-      isRetry ? 50 : 100 // Enforce 50m on retry, 100m otherwise
-    );
-  }
-
-  // ── Layer 7: Correct code validation ──────────────────────────────────────
-  const isCodeCorrect = String(selectedCode) === String(session.correctCode);
-
-  // ── Conditional Retry Logic ──────────────────────────────────────────────
-  // If location is invalid but code is correct, and it's not already a retry, request one.
-  if (!locationResult.valid && isCodeCorrect && !isRetry) {
-    return { 
-      status: "RETRY_REQUIRED", 
-      reason: "Location or accuracy validation failed. Correct code detected, one retry allowed." 
-    };
-  }
-
-  // ── Final Validation ──────────────────────────────────────────────────────
-  if (!locationResult.valid) {
-    let reason = "Location verification failed";
-    if (!locationResult.isAccuracyValid) {
-        reason = `Location verification failed: GPS accuracy too poor (${Math.round(accuracy)}m). Max allowed: 50m.`;
-    } else if (!locationResult.isDistanceValid) {
-        reason = `Location verification failed: Out of range (~${locationResult.distance}m away). Max allowed: ${LOCATION_RADIUS_METRES}m.`;
-    }
-    return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode, reason);
-  }
-
-  if (!isCodeCorrect) {
-    return _markInvalid(sessionId, studentId, deviceId, latitude, longitude, submittedAt, selectedCode,
-      "Incorrect attendance code selected");
+    codeAttempts.delete(key);
+    return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
+      "Incorrect attendance code entered");
   }
 
   // ── All checks passed → Create PRESENT record (Safely handling race conditions) ─────────────────────────────
@@ -197,14 +167,13 @@ async function submitAttendance({
         sessionId: Number(sessionId),
         studentId: Number(studentId),
         status: "PRESENT",
-        submittedCode: String(selectedCode),
+        submittedCode,
         deviceId,
-        latitude: latitude ?? null,
-        longitude: longitude ?? null,
         submittedAt,
       },
     });
-    return { status: "PRESENT", attendance };
+    codeAttempts.delete(`${sessionId}:${studentId}`);
+    return { status: "PRESENT", attendance, facultyId: session.facultyId };
   } catch (error) {
     if (error.code === 'P2002') {
       console.warn(`[Attendance Warning] Prevented duplicate submission race condition for session ${sessionId}, student ${studentId}.`);
@@ -226,7 +195,7 @@ async function submitAttendance({
  * Internal helper: create an INVALID attendance record and return a result.
  */
 async function _markInvalid(
-  sessionId, studentId, deviceId, latitude, longitude, submittedAt, submittedCode, reason
+  sessionId, studentId, deviceId, submittedAt, submittedCode, reason
 ) {
   try {
     const attendance = await prisma.attendance.upsert({
@@ -240,8 +209,6 @@ async function _markInvalid(
         reason,
         submittedCode: submittedCode ? String(submittedCode) : null,
         deviceId: deviceId ?? null,
-        latitude: latitude ?? null,
-        longitude: longitude ?? null,
         submittedAt,
       },
       update: {}, // don't overwrite an existing PRESENT record
