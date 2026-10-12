@@ -72,7 +72,6 @@ async function broadcastSessionStarted(subjectId, sessionData, pushTokens = []) 
 
   // Push Notifications
   if (pushTokens.length > 0) {
-    console.log(`[DEBUG] Sending push notifications to ${pushTokens.length} students...`);
     await sendPushNotifications(
       pushTokens,
       `Attendance Started: ${sessionData.subject?.name || "New Session"}`,

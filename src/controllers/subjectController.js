@@ -19,8 +19,6 @@ exports.createSubject = async (req, res, next) => {
       return res.status(400).json({ error: "Self-same subject (code + type) already exists" });
     }
 
-    console.log(`[DEBUG] createSubject called for faculty ${facultyId}:`, { name, code: normalizedCode, type: normalizedType });
-    
     const subject = await prisma.subject.create({
       data: { 
         name, 

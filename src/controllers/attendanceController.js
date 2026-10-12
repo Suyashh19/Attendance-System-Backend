@@ -2,20 +2,27 @@
  * controllers/attendanceController.js
  */
 
-const { submitAttendance, deleteSubjectHistory } = require("../services/attendanceService");
-const { getAttendanceSummary, getStudentRecord, getGlobalHistory, getHierarchicalHistory } = require("../services/analyticsService");
+const { submitAttendance } = require("../services/attendanceService");
+const { getAttendanceSummary, getStudentRecord, getHierarchicalHistory } = require("../services/analyticsService");
 const { notifyStudent, notifyFacultyCount } = require("../services/notificationService");
 const prisma = require("../config/db");
+
+const EDITABLE_STATUSES = ["PRESENT", "ABSENT"];
 
 // Student: Submit the attendance code typed from the faculty's screen
 exports.submitAttendance = async (req, res, next) => {
   try {
     const studentId = req.user.userId;
-    const { sessionId, code, deviceId } = req.body;
+    const { code, deviceId } = req.body;
+    const sessionId = Number(req.body.sessionId);
+
+    if (!Number.isInteger(sessionId) || sessionId <= 0) {
+      return res.status(400).json({ error: "Invalid session id" });
+    }
 
     // Run the multi-layer pipeline
     const result = await submitAttendance({
-      sessionId: Number(sessionId),
+      sessionId,
       studentId: Number(studentId),
       code,
       deviceId,
@@ -24,14 +31,15 @@ exports.submitAttendance = async (req, res, next) => {
     // A wrong code with attempts left is not a final result, so nothing is broadcast
     if (result.status !== "WRONG_CODE") {
       // Notify student via private socket room asynchronously
-      notifyStudent(studentId, { ...result, sessionId });
+      notifyStudent(studentId, { ...result, sessionId })
+        .catch((err) => console.error("[Notify Error]", err));
     }
 
     // Keep the faculty's live present count in sync
     if (result.status === "PRESENT" && result.facultyId) {
       prisma.attendance
-        .count({ where: { sessionId: Number(sessionId), status: "PRESENT" } })
-        .then((presentCount) => notifyFacultyCount(result.facultyId, Number(sessionId), presentCount))
+        .count({ where: { sessionId, status: "PRESENT" } })
+        .then((presentCount) => notifyFacultyCount(result.facultyId, sessionId, presentCount))
         .catch((err) => console.error("[Attendance Count Error]", err));
     }
 
@@ -40,16 +48,25 @@ exports.submitAttendance = async (req, res, next) => {
       status: result.status,
       reason: result.reason,
       attemptsLeft: result.attemptsLeft,
+      sessionId,
     });
   } catch (err) {
     next(err);
   }
 };
 
-// Faculty: View analytics for an entire subject
+// Faculty: View analytics for one of their subjects
 exports.getSubjectAnalytics = async (req, res, next) => {
   try {
     const subjectId = Number(req.params.subjectId);
+
+    const subject = await prisma.subject.findFirst({
+      where: { id: subjectId, facultyId: req.user.userId },
+    });
+    if (!subject) {
+      return res.status(403).json({ error: "You do not have permission for this subject" });
+    }
+
     const summary = await getAttendanceSummary(subjectId);
     res.json(summary);
   } catch (err) {
@@ -87,22 +104,26 @@ exports.getSessionAttendance = async (req, res, next) => {
     const attendances = await prisma.attendance.findMany({
       where: { sessionId }
     });
+    const byStudent = new Map(attendances.map((a) => [a.studentId, a]));
 
     // Merge: show students with their attendance status (if exists)
-    const studentsWithStatus = enrollments.map(e => {
-      const attendance = attendances.find(a => a.studentId === e.studentId);
-      return {
-        ...e.student,
-        status: attendance ? attendance.status : "ABSENT",
-        reason: attendance ? attendance.reason : null,
-        editedByFaculty: attendance ? attendance.editedByFaculty : false
-      };
-    });
+    const studentsWithStatus = enrollments
+      .map(e => {
+        const attendance = byStudent.get(e.studentId);
+        return {
+          ...e.student,
+          status: attendance ? attendance.status : "ABSENT",
+          reason: attendance ? attendance.reason : null,
+          editedByFaculty: attendance ? attendance.editedByFaculty : false
+        };
+      })
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
     res.json({
       session: {
         id: session.id,
         date: session.startTime,
+        isActive: session.isActive,
         subjectName: session.subject.name,
         subjectCode: session.subject.code,
         subjectType: session.subject.type
@@ -140,26 +161,17 @@ exports.getAttendanceHistory = async (req, res, next) => {
   }
 };
 
-// Delete student's history for a specific subject
-exports.deleteSubjectHistory = async (req, res, next) => {
-  try {
-    const studentId = req.user.userId;
-    const subjectId = Number(req.params.subjectId);
-
-    await deleteSubjectHistory(studentId, subjectId);
-    res.json({ message: "Subject history deleted successfully" });
-  } catch (err) {
-    next(err);
-  }
-};
-
 // Faculty: Edit attendance record manually
 exports.editAttendance = async (req, res, next) => {
   try {
     const sessionId = Number(req.params.sessionId);
     const studentId = Number(req.params.studentId);
-    const { status, reason } = req.body;
+    const { status, reason } = req.body || {};
     const facultyId = req.user.userId;
+
+    if (!EDITABLE_STATUSES.includes(status)) {
+      return res.status(400).json({ error: "Status must be PRESENT or ABSENT" });
+    }
 
     // Verify faculty owns the session
     const session = await prisma.session.findFirst({
@@ -168,6 +180,13 @@ exports.editAttendance = async (req, res, next) => {
 
     if (!session) {
       return res.status(403).json({ error: "Unauthorized for this session" });
+    }
+
+    const enrollment = await prisma.enrollment.findFirst({
+      where: { studentId, subjectId: session.subjectId, status: "APPROVED" },
+    });
+    if (!enrollment) {
+      return res.status(400).json({ error: "This student is not enrolled in the subject" });
     }
 
     const attendance = await prisma.attendance.upsert({

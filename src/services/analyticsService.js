@@ -6,6 +6,8 @@
 const ExcelJS = require("exceljs");
 const prisma = require("../config/db");
 
+const REPORT_TIMEZONE = process.env.REPORT_TIMEZONE || "Asia/Kolkata";
+
 /**
  * Get overall attendance summary for a subject.
  * Returns per-student: total sessions, present, absent, invalid, percentage.
@@ -99,12 +101,15 @@ async function getStudentRecord(studentId, subjectId) {
   const counts = { PRESENT: 0, ABSENT: 0, INVALID: 0 };
   for (const a of attendances) counts[a.status] = (counts[a.status] || 0) + 1;
 
-  const percentage = totalSessions > 0 ? ((counts.PRESENT / totalSessions) * 100).toFixed(1) : "0.0";
+  // Same rule as the faculty summary: measured against the sessions this student has a record for
+  const studentTotal = attendances.length;
+  const percentage = studentTotal > 0 ? ((counts.PRESENT / studentTotal) * 100).toFixed(1) : "0.0";
 
   return {
     studentId,
     subjectId,
     totalSessions,
+    studentSessions: studentTotal,
     PRESENT: counts.PRESENT,
     ABSENT: counts.ABSENT,
     INVALID: counts.INVALID,
@@ -190,6 +195,7 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
     where: { id: Number(subjectId) },
     include: {
       enrollments: {
+        where: { status: "APPROVED" },
         include: {
           student: {
             select: { id: true, name: true, email: true, rollNo: true, prn: true }
@@ -200,7 +206,9 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
   });
   if (!subject) throw new Error("Subject not found");
 
-  const students = subject.enrollments.map(e => e.student).sort((a, b) => a.name.localeCompare(b.name));
+  const students = subject.enrollments
+    .map(e => e.student)
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   // 2. Fetch Sessions for the subject
   const sessionQuery = {
@@ -251,10 +259,15 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
 
   // Add Date Columns
   sessions.forEach(session => {
-    // Native JS format: dd/MM/yy HH:mm
-    const d = new Date(session.startTime);
-    const headerDate = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear().toString().slice(-2)} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-    
+    // dd/MM/yy HH:mm in the college's timezone (the server itself usually runs in UTC)
+    const headerDate = new Date(session.startTime)
+      .toLocaleString("en-GB", {
+        timeZone: REPORT_TIMEZONE,
+        day: "2-digit", month: "2-digit", year: "2-digit",
+        hour: "2-digit", minute: "2-digit", hour12: false,
+      })
+      .replace(",", "");
+
     columns.push({ header: headerDate, key: `s_${session.id}`, width: 15 });
   });
 
@@ -264,7 +277,7 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
   students.forEach(student => {
     const row = {
       prn: student.prn || "N/A",
-      name: student.name,
+      name: student.name || "N/A",
       email: student.email,
     };
 

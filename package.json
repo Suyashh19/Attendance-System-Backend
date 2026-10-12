@@ -5,10 +5,10 @@
   "main": "index.js",
   "scripts": {
     "postinstall": "npx prisma generate",
-    "build": "npm install && npx prisma generate && npx prisma db push",
+    "build": "npm install && npx prisma generate && node scripts/drop_legacy_columns.js && npx prisma db push",
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test \"tests/**/*.test.js\""
   },
   "keywords": [],
   "author": "",
@@ -24,8 +24,8 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "prisma": "^5.22.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "resend": "^3.0.0",
     "socket.io": "^4.8.3"
   }

@@ -4,6 +4,11 @@ const jwt = require("jsonwebtoken");
 const { sendOtpEmail } = require("../services/emailService");
 const { generateOTP } = require("../services/otpService");
 
+const MIN_PASSWORD_LENGTH = 6;
+const MAX_OTP_ATTEMPTS = 5;
+const ALLOWED_ROLES = ["student", "faculty"];
+const DEVICE_CHANGE_COOLDOWN_DAYS = 30;
+
 // REGISTER
 exports.register = async (req, res) => {
   const { email, password, name, rollNo, prn, deviceId, role, otp } = req.body || {};
@@ -11,14 +16,22 @@ exports.register = async (req, res) => {
   try {
     if (!deviceId) return res.status(400).json({ error: "Device ID is required for registration" });
     if (!otp) return res.status(400).json({ error: "OTP is required for registration" });
-
-    // Verify OTP
-    const otpRecord = await prisma.otp.findFirst({ where: { email, code: otp } });
-    if (!otpRecord) return res.status(400).json({ error: "Invalid OTP" });
-    if (new Date() > otpRecord.expiresAt) return res.status(400).json({ error: "OTP has expired" });
+    if (role && !ALLOWED_ROLES.includes(role)) return res.status(400).json({ error: "Invalid role" });
 
     const existingEmail = await prisma.user.findUnique({ where: { email } });
     if (existingEmail) return res.status(400).json({ error: "Email already exists" });
+
+    // Verify OTP
+    const otpCheck = await checkOtp(email, otp);
+    if (otpCheck.error) return res.status(400).json({ error: otpCheck.error });
+
+    // One phone, one student account: otherwise a single device could mark two students present
+    if (role !== "faculty") {
+      const deviceInUse = await prisma.user.findFirst({ where: { deviceId, role: "student" } });
+      if (deviceInUse) {
+        return res.status(400).json({ error: "This device is already registered to another student account" });
+      }
+    }
 
     // Ensure rollNo is unique if provided
     if (rollNo) {
@@ -55,7 +68,7 @@ exports.register = async (req, res) => {
     });
 
     // Delete OTP after successful use
-    await prisma.otp.delete({ where: { id: otpRecord.id } });
+    await prisma.otp.deleteMany({ where: { email } });
 
     res.status(201).json(user);
   } catch (err) {
@@ -68,16 +81,19 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   const { email, password } = req.body || {};
 
+  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+
   try {
     const user = await prisma.user.findUnique({
       where: { email },
     });
 
-    if (!user) return res.status(404).json({ error: "User not found" });
+    // Same answer for both cases so the response does not reveal which emails are registered
+    const valid = user ? await bcrypt.compare(password, user.password) : false;
 
-    const valid = await bcrypt.compare(password, user.password);
-
-    if (!valid) return res.status(401).json({ error: "Wrong password" });
+    if (!valid) return res.status(401).json({ error: "Incorrect email or password" });
 
     const token = jwt.sign(
       { userId: user.id, role: user.role },
@@ -123,7 +139,6 @@ exports.savePushToken = async (req, res) => {
       where: { id: userId },
       data: { pushToken: token },
     });
-    console.log(`[DEBUG] Saved push token for user ${userId}`);
     res.json({ message: "Push token saved successfully" });
   } catch (err) {
     console.error("Error saving push token:", err);
@@ -180,6 +195,7 @@ exports.deleteAccount = async (req, res, next) => {
         const sIds = ownedSubjects.map(s => s.id);
         await tx.attendance.deleteMany({ where: { session: { subjectId: { in: sIds } } } });
         await tx.session.deleteMany({ where: { subjectId: { in: sIds } } });
+        await tx.enrollment.deleteMany({ where: { subjectId: { in: sIds } } });
         await tx.subject.deleteMany({ where: { facultyId: userId } });
       }
       // 4. Finally delete the User profile
@@ -213,10 +229,34 @@ const validateRateLimit = async (email) => {
   return { valid: true };
 };
 
+// Checks the newest OTP for an email. Wrong guesses are counted so a code cannot be brute-forced.
+const checkOtp = async (email, otp) => {
+  if (typeof email !== "string" || !email) return { error: "Email is required" };
+
+  const record = await prisma.otp.findFirst({
+    where: { email },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!record) return { error: "Invalid OTP" };
+  if (new Date() > record.expiresAt) return { error: "OTP has expired" };
+  if (record.attempts >= MAX_OTP_ATTEMPTS) {
+    return { error: "Too many incorrect attempts. Please request a new OTP." };
+  }
+
+  if (record.code !== String(otp).trim()) {
+    await prisma.otp.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
+    return { error: "Invalid OTP" };
+  }
+
+  return { record };
+};
+
 const createAndSendOtp = async (email) => {
-  // Delete existing unexpired/expired OTPs to prevent clutter, though we can just keep them.
-  // Actually, better to just delete existing ones for the same email:
-  await prisma.otp.deleteMany({ where: { email } });
+  // Recent OTPs are kept (only the newest one is accepted) because the rate limit counts them
+  await prisma.otp.deleteMany({
+    where: { email, createdAt: { lt: new Date(Date.now() - 10 * 60 * 1000) } },
+  });
 
   const otpCode = generateOTP();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
@@ -264,9 +304,8 @@ exports.verifySignupOtp = async (req, res) => {
   if (!email || !otp) return res.status(400).json({ error: "Email and OTP are required" });
 
   try {
-    const record = await prisma.otp.findFirst({ where: { email, code: otp } });
-    if (!record) return res.status(400).json({ error: "Invalid OTP" });
-    if (new Date() > record.expiresAt) return res.status(400).json({ error: "OTP has expired" });
+    const otpCheck = await checkOtp(email, otp);
+    if (otpCheck.error) return res.status(400).json({ error: otpCheck.error });
 
     // Note: We don't delete the OTP here, because it will be needed during the actual `/register` call.
     res.json({ message: "OTP verified" });
@@ -281,9 +320,9 @@ exports.forgotPassword = async (req, res) => {
   if (!email) return res.status(400).json({ error: "Email is required" });
 
   try {
-    // Generic error to avoid email enumeration (though signup exposes it, usually standard practice on forgot-password)
+    // Same response whether or not the email is registered, to avoid email enumeration
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (!existing) return res.status(400).json({ error: "If this email is registered, an OTP has been sent." });
+    if (!existing) return res.json({ message: "If this email is registered, an OTP has been sent." });
 
     const limitCheck = await validateRateLimit(email);
     if (!limitCheck.valid) return res.status(429).json({ error: limitCheck.error });
@@ -300,13 +339,16 @@ exports.resetPassword = async (req, res) => {
   const { email, otp, newPassword } = req.body || {};
   if (!email || !otp || !newPassword) return res.status(400).json({ error: "Email, OTP, and new password are required" });
 
+  if (typeof newPassword !== "string" || newPassword.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+  }
+
   try {
-    const record = await prisma.otp.findFirst({ where: { email, code: otp } });
-    if (!record) return res.status(400).json({ error: "Invalid OTP" });
-    if (new Date() > record.expiresAt) return res.status(400).json({ error: "OTP has expired" });
+    const otpCheck = await checkOtp(email, otp);
+    if (otpCheck.error) return res.status(400).json({ error: otpCheck.error });
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) return res.status(400).json({ error: "Invalid OTP" });
 
     const hashed = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
@@ -314,7 +356,7 @@ exports.resetPassword = async (req, res) => {
       data: { password: hashed }
     });
 
-    await prisma.otp.delete({ where: { id: record.id } });
+    await prisma.otp.deleteMany({ where: { email } });
 
     res.json({ message: "Password updated successfully" });
   } catch (err) {
@@ -323,18 +365,104 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
+// --- Device change (student moved to a new phone, or reinstalled the app) ---
+
+const daysUntilDeviceChange = (user) => {
+  if (!user.deviceChangedAt) return 0;
+  const nextAllowed = user.deviceChangedAt.getTime() + DEVICE_CHANGE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+  return Math.max(0, Math.ceil((nextAllowed - Date.now()) / (24 * 60 * 60 * 1000)));
+};
+
+// Step 1: email an OTP to the account owner
+exports.requestDeviceChange = async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const waitDays = daysUntilDeviceChange(user);
+    if (waitDays > 0) {
+      return res.status(429).json({
+        error: `You changed your device recently. You can change it again in ${waitDays} day(s).`,
+      });
+    }
+
+    const limitCheck = await validateRateLimit(user.email);
+    if (!limitCheck.valid) return res.status(429).json({ error: limitCheck.error });
+
+    await createAndSendOtp(user.email);
+    res.json({ message: "An OTP has been sent to your email." });
+  } catch (err) {
+    console.error("Request Device Change Error:", err);
+    res.status(500).json({ error: "Failed to send OTP" });
+  }
+};
+
+// Step 2: confirm the OTP and bind the account to the phone making the request
+exports.confirmDeviceChange = async (req, res) => {
+  const { otp, deviceId } = req.body || {};
+  if (!otp || typeof deviceId !== "string" || !deviceId) {
+    return res.status(400).json({ error: "OTP and device ID are required" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (user.deviceId === deviceId) {
+      return res.status(400).json({ error: "This phone is already linked to your account" });
+    }
+
+    // The cooldown stops an account from hopping between friends' phones every lecture
+    const waitDays = daysUntilDeviceChange(user);
+    if (waitDays > 0) {
+      return res.status(429).json({
+        error: `You changed your device recently. You can change it again in ${waitDays} day(s).`,
+      });
+    }
+
+    const otpCheck = await checkOtp(user.email, otp);
+    if (otpCheck.error) return res.status(400).json({ error: otpCheck.error });
+
+    if (user.role === "student") {
+      const deviceInUse = await prisma.user.findFirst({
+        where: { deviceId, role: "student", id: { not: user.id } },
+      });
+      if (deviceInUse) {
+        return res.status(400).json({ error: "This device is already registered to another student account" });
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: { deviceId, deviceLocked: true, deviceChangedAt: new Date() },
+      select: { id: true, email: true, role: true, name: true, rollNo: true, prn: true, deviceId: true },
+    });
+
+    await prisma.otp.deleteMany({ where: { email: user.email } });
+
+    res.json({ message: "This phone is now linked to your account.", user: updated });
+  } catch (err) {
+    console.error("Confirm Device Change Error:", err);
+    res.status(500).json({ error: "Failed to change device" });
+  }
+};
+
 exports.updatePassword = async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
   const userId = req.user.userId;
 
   if (!currentPassword || !newPassword) return res.status(400).json({ error: "Both current and new password are required" });
+  if (typeof newPassword !== "string" || newPassword.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+  }
 
   try {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    const valid = await bcrypt.compare(currentPassword, user.password);
-    if (!valid) return res.status(401).json({ error: "Incorrect current password" });
+    // 400, not 401: the session is still valid, only the typed password is wrong
+    const valid = await bcrypt.compare(String(currentPassword), user.password);
+    if (!valid) return res.status(400).json({ error: "Incorrect current password" });
 
     const hashed = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({

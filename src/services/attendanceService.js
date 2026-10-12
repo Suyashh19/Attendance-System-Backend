@@ -7,7 +7,7 @@
  *   1. Session active check
  *   2. Enrollment validation
  *   3. Device ID validation
- *   4. Time-bound check (≤ 15 seconds from session start)
+ *   4. Time-bound check (session.windowExpiry, set when the session starts)
  *   5. Correct code validation (code typed manually by the student)
  *
  * Returns: { status: "PRESENT"|"INVALID"|"WRONG_CODE", reason?: string, attendance }
@@ -16,10 +16,9 @@
 const prisma = require("../config/db");
 const { validateDevice } = require("./deviceService");
 
-const TIME_LIMIT_SECONDS = 20;
 const MAX_CODE_ATTEMPTS = 3;
 
-// Wrong-code tries per student per session (RAM only; the window is 15 seconds)
+// Wrong-code tries per student per session (RAM only; the window is a few seconds)
 const codeAttempts = new Map();
 
 // Simple internal session cache (lives purely in RAM, highly efficient)
@@ -70,8 +69,7 @@ async function submitAttendance({
   const session = await getSessionCached(sessionId);
 
   if (!session) {
-    return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
-      "Session does not exist");
+    return { status: "INVALID", reason: "Session does not exist" };
   }
   if (!session.isActive) {
     return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
@@ -100,14 +98,13 @@ async function submitAttendance({
   const existing = user?.attendances && user.attendances.length > 0 ? user.attendances[0] : null;
 
   // ── Layer 2: Enrollment validation ────────────────────────────────────────
+  // Nothing is stored here: only approved students belong in a session's records.
   if (!enrollment) {
-    return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
-      "Student is not enrolled in this subject");
+    return { status: "INVALID", reason: "You are not enrolled in this subject" };
   }
 
   if (user.enrollments[0].status !== "APPROVED") {
-    return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
-      "Enrollment is pending approval or rejected");
+    return { status: "INVALID", reason: "Your enrollment is pending approval or was rejected" };
   }
 
   // ── Layer 3: Duplicate submission check ─────────────────────────────────––
@@ -248,7 +245,7 @@ async function markAbsentees(sessionId) {
   // Create ABSENT records for those who did NOT submit
   const absentees = enrollments.filter((e) => !submittedIds.has(e.studentId));
 
-  if (absentees.length === 0) return 0;
+  if (absentees.length === 0) return [];
 
   await prisma.attendance.createMany({
     data: absentees.map((e) => ({
@@ -263,16 +260,4 @@ async function markAbsentees(sessionId) {
   return absentees.map((e) => e.studentId);
 }
 
-/**
- * Delete all attendance records for a student in a specific subject.
- */
-async function deleteSubjectHistory(studentId, subjectId) {
-  return prisma.attendance.deleteMany({
-    where: {
-      studentId: Number(studentId),
-      session: { subjectId: Number(subjectId) }
-    }
-  });
-}
-
-module.exports = { submitAttendance, markAbsentees, deleteSubjectHistory };
+module.exports = { submitAttendance, markAbsentees };

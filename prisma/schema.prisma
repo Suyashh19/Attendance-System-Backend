@@ -19,6 +19,7 @@ model User {
   prn      String? @unique
   deviceId String?
   deviceLocked Boolean @default(false)
+  deviceChangedAt DateTime? // last time the student moved the account to another phone
   pushToken String?
 
   // Relations
@@ -75,12 +76,7 @@ model Session {
   subjectId   Int
   facultyId   Int
   correctCode String  // 4-digit code e.g. "4721"
-  fakeOptions String  // LEGACY: unused since manual code entry, always "[]"
   isActive    Boolean @default(true)
-
-  // LEGACY: GPS was removed, these stay null
-  latitude    Float?
-  longitude   Float?
 
   startTime   DateTime  @default(now())
   windowExpiry DateTime?
@@ -112,8 +108,6 @@ model Attendance {
   // Student submission data
   submittedCode String?
   deviceId      String?
-  latitude      Float?
-  longitude     Float?
   submittedAt   DateTime?
   editedByFaculty Boolean @default(false)
 

@@ -8,6 +8,21 @@ const prisma = require("../config/db");
 exports.enrollStudent = async (req, res, next) => {
   try {
     const { subjectId, studentId } = req.body;
+
+    const subject = await prisma.subject.findFirst({
+      where: { id: Number(subjectId), facultyId: req.user.userId },
+    });
+    if (!subject) {
+      return res.status(403).json({ error: "Unauthorized for this subject" });
+    }
+
+    const student = await prisma.user.findFirst({
+      where: { id: Number(studentId), role: "student" },
+    });
+    if (!student) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
     const existing = await prisma.enrollment.findFirst({
       where: { subjectId: Number(subjectId), studentId: Number(studentId) },
     });
@@ -53,9 +68,13 @@ exports.enrollByCode = async (req, res, next) => {
     }));
 
     const enrolledCount = results.filter(r => !!r).length;
-    
-    res.status(201).json({ 
-      message: enrolledCount > 0 ? `Successfully enrolled in ${enrolledCount} subject(s)` : "You are already enrolled in all matching classes",
+
+    if (enrolledCount === 0) {
+      return res.status(400).json({ error: "You have already requested or joined this class" });
+    }
+
+    res.status(201).json({
+      message: `Request sent for ${enrolledCount} class(es). Waiting for faculty approval.`,
       subjects: subjects.map(s => s.name)
     });
   } catch (err) {
@@ -68,11 +87,19 @@ exports.getSubjectEnrollments = async (req, res, next) => {
   try {
     const subjectId = Number(req.params.subjectId);
 
+    const subject = await prisma.subject.findFirst({
+      where: { id: subjectId, facultyId: req.user.userId },
+    });
+    if (!subject) {
+      return res.status(403).json({ error: "Unauthorized for this subject" });
+    }
+
     const enrollments = await prisma.enrollment.findMany({
       where: { subjectId },
       include: {
-        student: { select: { id: true, name: true, rollNo: true, email: true } },
+        student: { select: { id: true, name: true, rollNo: true, prn: true, email: true } },
       },
+      orderBy: { enrolledAt: "asc" },
     });
 
     res.json({
@@ -141,6 +168,13 @@ exports.updateEnrollmentStatus = async (req, res, next) => {
 
     if (!subject) {
       return res.status(403).json({ error: "Unauthorized for this subject" });
+    }
+
+    const enrollment = await prisma.enrollment.findUnique({
+      where: { studentId_subjectId: { studentId, subjectId } },
+    });
+    if (!enrollment) {
+      return res.status(404).json({ error: "Enrollment request not found" });
     }
 
     const updated = await prisma.enrollment.update({

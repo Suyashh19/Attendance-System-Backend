@@ -16,4 +16,8 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Ready for REST and Socket.IO connections`);
+
+  // Sessions left open by a restart are closed (or re-armed) here
+  const { closeStaleSessions } = require("./src/services/sessionLifecycle");
+  closeStaleSessions().catch((err) => console.error("[Session Close] Startup sweep failed:", err));
 });

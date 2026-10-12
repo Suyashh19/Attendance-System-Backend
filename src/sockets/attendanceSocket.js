@@ -13,13 +13,15 @@ const { joinSubjectRoom, leaveSubjectRoom } = require("./rooms");
  */
 function registerAttendanceHandlers(io, socket) {
   // Client requests to join a subject room (e.g. when opening a subject's page)
-  socket.on("join_subject", ({ subjectId }) => {
-    if (subjectId) joinSubjectRoom(socket, subjectId);
+  socket.on("join_subject", (payload) => {
+    const subjectId = Number(payload?.subjectId);
+    if (Number.isInteger(subjectId) && subjectId > 0) joinSubjectRoom(socket, subjectId);
   });
 
   // Client requests to leave a subject room
-  socket.on("leave_subject", ({ subjectId }) => {
-    if (subjectId) leaveSubjectRoom(socket, subjectId);
+  socket.on("leave_subject", (payload) => {
+    const subjectId = Number(payload?.subjectId);
+    if (Number.isInteger(subjectId) && subjectId > 0) leaveSubjectRoom(socket, subjectId);
   });
 }
 

@@ -50,9 +50,10 @@ src/
 ├── routes/             # API definition endpoints
 ├── services/           # Heavy Operations: (Attendance verification, Analytics mapping, Expo notifications)
 ├── sockets/            # Live Socket.IO room management (subject_123, user_456)
-├── utils/              # Calculation helpers
 └── app.js              # Express app boosting
 server.js               # Primary HTTP execution server
+tests/                  # Unit tests (node --test), no database needed
+scripts/                # One-off database maintenance scripts
 prisma/
  └── schema.prisma      # Central DB Schema declaration & index management
 postman_collection.json # Local API blueprint testing schema
@@ -94,6 +95,12 @@ npm run dev
 # Server logs "Ready for REST and Socket.IO connections" on localhost
 ```
 
+### Step 5: Run the tests
+The tests replace the database and Socket.IO with fakes, so they need no setup (Node 21+):
+```bash
+npm test
+```
+
 ---
 
 ## 📡 6. WebSocket Connectivity & Notification Flow
@@ -120,7 +127,10 @@ A rich **Postman Collection** is included (`postman_collection.json`) encapsulat
 - `POST /api/auth/verify-signup-otp` (Validate code for registration)
 - `POST /api/auth/forgot-password` (Trigger password recovery code)
 - `POST /api/auth/login` (Obtain Access Matrix)
+- `POST /api/auth/device-change/request` and `/confirm` (Move a student account to a new phone with an email OTP, once every 30 days)
 - `POST /api/sessions/start` (Initializes time bounds)
+- `POST /api/sessions/:sessionId/end` (Closes the session and returns the roster; the server also closes it by itself shortly after the window)
+- `GET /api/sessions/my-active` (The faculty's open session, to reopen it after an app restart)
 - `POST /api/attendance/submit` (The Heavy-Lift Validation Route)
 - `GET /api/attendance/subject/:subjectId/analytics` (Generates faculty attendance heat maps)
 

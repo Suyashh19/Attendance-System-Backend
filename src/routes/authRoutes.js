@@ -2,8 +2,9 @@ const express = require("express");
 const router = express.Router();
 
 const authController = require("../controllers/authController");
+const { validateRegister } = require("../middleware/validationMiddleware");
 
-router.post("/register", authController.register);
+router.post("/register", validateRegister, authController.register);
 router.post("/login", authController.login);
 
 // OTP Flows
@@ -19,5 +20,7 @@ router.post("/update-prn", authMiddleware, authController.updatePrn);
 router.post("/push-token", authMiddleware, authController.savePushToken);
 router.delete("/delete-account", authMiddleware, authController.deleteAccount);
 router.post("/update-password", authMiddleware, authController.updatePassword);
+router.post("/device-change/request", authMiddleware, authController.requestDeviceChange);
+router.post("/device-change/confirm", authMiddleware, authController.confirmDeviceChange);
 
 module.exports = router;

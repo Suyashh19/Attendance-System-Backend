@@ -23,6 +23,13 @@ router.post(
   sessionController.endSession
 );
 
+// GET /api/sessions/my-active (Faculty Only)
+router.get(
+  "/my-active",
+  requireRole("faculty"),
+  sessionController.getMyActiveSession
+);
+
 // GET /api/sessions/recent (Faculty Only)
 router.get(
   "/recent",
@@ -33,7 +40,7 @@ router.get(
 // GET /api/sessions/:subjectId/history
 router.get(
   "/:subjectId/history",
-  requireRole("faculty", "student"), // mostly faculty, but maybe students can view history
+  requireRole("faculty"),
   sessionController.getSessionHistory
 );
 

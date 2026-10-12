@@ -25,8 +25,7 @@ function generateCode() {
 
 /**
  * Create a new attendance session for a subject.
- * Automatically closes any existing active session for the same subject
- * before creating a new one (prevents orphaned sessions).
+ * The caller is responsible for closing any session that is still open.
  *
  * @param {Object} data
  * @param {number} data.subjectId
@@ -40,113 +39,40 @@ async function createSession({ subjectId, classId, facultyId, date, startTime, e
   // Use subjectId or classId (for backward/forward compatibility)
   const targetSubjectId = Number(subjectId || classId);
 
-  console.log("[DEBUG] createSession called with:", {
-    targetSubjectId,
-    facultyId,
-    date,
-    startTime,
-    endTime
-  });
-  
   if (!targetSubjectId) {
     throw new Error("Subject ID (classId) is required to start a session.");
   }
 
-  // Lock: Reject if a session was created VERY recently (e.g., < 10 seconds ago)
-  // This prevents rapid-fire duplicate sessions from multiple clicks or network retries.
-  const recentSession = await prisma.session.findFirst({
-    where: { 
-      subjectId: targetSubjectId, 
-      startTime: { gte: new Date(Date.now() - 10000) } 
-    }
-  });
-
-  if (recentSession) {
-    console.warn(`[DEBUG] Rejecting session start for subject ${targetSubjectId}: Already started ${Math.round((Date.now() - recentSession.startTime.getTime())/1000)}s ago.`);
-    throw new Error("A session for this subject was started very recently. Please wait a moment.");
-  }
-
-  // Close any lingering active session for this subject
-  try {
-    const closedCount = await prisma.session.updateMany({
-      where: { subjectId: targetSubjectId, isActive: true },
-      data: { isActive: false, endTime: new Date() },
-    });
-    console.log(`[DEBUG] Closed ${closedCount.count} existing active sessions for subject ${targetSubjectId}`);
-  } catch (err) {
-    console.error("[DEBUG] Error closing existing sessions:", err);
-  }
-
+  const scheduledDate = date ? new Date(date) : new Date();
   const correctCode = generateCode();
 
   try {
-    console.log("[DEBUG] Attempting prisma.session.create with data mapping...");
-    const sessionData = {
-      subjectId: targetSubjectId,
-      facultyId: Number(facultyId),
-      // 1. Handle Date: Convert string date to Date object
-      date: date ? new Date(date) : new Date(),
-      
-      // 2. IMPORTANT: startTime and endTime in DB are DateTime. 
-      // Do NOT pass strings from frontend ("10:00") directly to them.
-      startTime: new Date(), // Actual start is NOW
-      windowExpiry: new Date(Date.now() + WINDOW_SECONDS * 1000), // 15-second attendance window
-      endTime: null,         // To be set when session ends
-      
-      // 3. Store the scheduled string times in correct TEXT fields
-      scheduledStartTime: startTime || null, 
-      scheduledEndTime: endTime || null,   
-      
-      correctCode,
-      fakeOptions: "[]", // legacy NOT NULL column, no longer used
-      isActive: true,
-      status: "active",
-    };
+    return await prisma.session.create({
+      data: {
+        subjectId: targetSubjectId,
+        facultyId: Number(facultyId),
+        date: isNaN(scheduledDate.getTime()) ? new Date() : scheduledDate,
 
-    console.log("[DEBUG] Prepared session data:", JSON.stringify(sessionData, null, 2));
+        // startTime and endTime in DB are DateTime: the session really starts NOW.
+        // The "10:00"-style strings from the frontend go into the scheduled* TEXT fields.
+        startTime: new Date(),
+        windowExpiry: new Date(Date.now() + WINDOW_SECONDS * 1000),
+        endTime: null,
 
-    const session = await prisma.session.create({
-      data: sessionData,
+        scheduledStartTime: startTime || null,
+        scheduledEndTime: endTime || null,
+
+        correctCode,
+        isActive: true,
+        status: "active",
+      },
       include: { subject: { select: { name: true, code: true } } },
     });
-
-    console.log("[DEBUG] Session created successfully:", session.id);
-
-    return session;
   } catch (error) {
-    // CRITICAL: Log the actual error for debugging
-    console.error("❌ Prisma Session Creation Failed!");
-    console.error("Error Name:", error.name);
-    console.error("Error Message:", error.message);
-    if (error.code) console.error("Prisma Error Code:", error.code);
-    if (error.meta) console.error("Prisma Error Meta:", JSON.stringify(error.meta));
-    
-    // Mask raw database error for frontend security, but provide better internal logs
+    console.error("[Session] Creation failed:", error.message, error.code || "", error.meta || "");
+    // Mask raw database error for the frontend
     throw new Error("Failed to start session. Please try again.");
   }
-}
-
-/**
- * End (deactivate) an attendance session.
- * @param {number} sessionId
- * @param {number} facultyId - Verify ownership
- * @returns {Promise<Object>} Updated session
- */
-async function endSession(sessionId, facultyId) {
-  const session = await prisma.session.findFirst({
-    where: { id: sessionId, facultyId },
-  });
-  if (!session) {
-    throw new Error("Session not found or you are not the owner");
-  }
-  if (!session.isActive) {
-    throw new Error("Session is already closed");
-  }
-
-  return prisma.session.update({
-    where: { id: sessionId },
-    data: { isActive: false, endTime: new Date() },
-  });
 }
 
 /**
@@ -157,6 +83,7 @@ async function endSession(sessionId, facultyId) {
 async function getActiveSession(subjectId) {
   return prisma.session.findFirst({
     where: { subjectId, isActive: true },
+    orderBy: { startTime: "desc" },
     include: { subject: { select: { name: true, code: true } } },
   });
 }
@@ -178,6 +105,7 @@ async function getSessionById(sessionId) {
 
 /**
  * Fetch session history for a subject (all sessions, ordered newest first).
+ * The attendance code is never part of the result.
  * @param {number} subjectId
  * @returns {Promise<Object[]>}
  */
@@ -185,16 +113,25 @@ async function getSessionHistory(subjectId) {
   const sessions = await prisma.session.findMany({
     where: { subjectId },
     orderBy: { startTime: "desc" },
-    include: {
+    select: {
+      id: true,
+      subjectId: true,
+      isActive: true,
+      startTime: true,
+      windowExpiry: true,
+      endTime: true,
+      date: true,
+      scheduledStartTime: true,
+      scheduledEndTime: true,
       _count: {
         select: { attendances: true },
       },
     },
   });
 
-  return sessions.map((s) => ({
+  return sessions.map(({ _count, ...s }) => ({
     ...s,
-    attendanceCount: s._count.attendances,
+    attendanceCount: _count.attendances,
   }));
 }
 
@@ -203,7 +140,6 @@ module.exports = {
   WINDOW_SECONDS,
   generateCode,
   createSession,
-  endSession,
   getActiveSession,
   getSessionById,
   getSessionHistory,

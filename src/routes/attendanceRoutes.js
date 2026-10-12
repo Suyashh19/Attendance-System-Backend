@@ -44,13 +44,6 @@ router.get(
   attendanceController.getAttendanceHistory
 );
 
-// DELETE /api/attendance/subject/:subjectId (Student only)
-router.delete(
-  "/subject/:subjectId",
-  requireRole("student"),
-  attendanceController.deleteSubjectHistory
-);
-
 // PUT /api/attendance/session/:sessionId/student/:studentId (Faculty only)
 router.put(
   "/session/:sessionId/student/:studentId",

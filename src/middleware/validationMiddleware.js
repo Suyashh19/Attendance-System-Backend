@@ -53,9 +53,10 @@ const validateEnrollByCode = validate({
 
 const validateStartSession = validate({
   subjectId: { required: true },
-  date:      { required: true, type: "string" }, // "2026-03-11"
-  startTime: { required: true, type: "string" }, // "10:00"
-  endTime:   { required: true, type: "string" }, // "11:00"
+  // Optional: a session always starts now; these only record the timetable slot
+  date:      { required: false, type: "string" }, // "2026-03-11"
+  startTime: { required: false, type: "string" }, // "10:00"
+  endTime:   { required: false, type: "string" }, // "11:00"
 });
 
 const validateSubmitAttendance = validate({

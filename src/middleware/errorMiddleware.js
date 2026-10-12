@@ -8,12 +8,20 @@
 const errorMiddleware = (err, req, res, next) => { // eslint-disable-line no-unused-vars
   console.error(`[ERROR] ${req.method} ${req.path}:`, err.message || err);
 
-  const statusCode = err.statusCode || err.status || 500;
-  const message = err.message || "Internal Server Error";
+  const isPrismaError = typeof err.code === "string" && /^P\d{4}$/.test(err.code);
+  const isBadJson = err.type === "entity.parse.failed";
 
-  // Detailed logging for Prisma errors
-  if (err.code) {
+  let statusCode = err.statusCode || err.status || 500;
+  let message = err.message || "Internal Server Error";
+
+  // Detailed logging for Prisma errors; the client only gets a generic message
+  if (isPrismaError) {
     console.error(`[PRISMA ERROR] Code: ${err.code}, Meta:`, err.meta);
+    statusCode = err.code === "P2025" ? 404 : 500;
+    message = err.code === "P2025" ? "Record not found" : "Something went wrong. Please try again.";
+  } else if (isBadJson) {
+    statusCode = 400;
+    message = "Invalid request body";
   }
 
   res.status(statusCode).json({
