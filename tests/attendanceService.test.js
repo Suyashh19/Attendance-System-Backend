@@ -176,3 +176,61 @@ test("a second submission returns the first result instead of a new record", asy
   assert.match(again.reason, /already submitted/i);
   assert.equal(prisma.attendances.length, 1);
 });
+
+test("a burst of students arriving together looks the session up once", async () => {
+  const prisma = buildPrisma();
+  let lookups = 0;
+  const findSession = prisma.session.findUnique;
+  prisma.session.findUnique = async (args) => {
+    lookups += 1;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return findSession(args);
+  };
+  const service = setup(prisma).load("services/attendanceService.js");
+
+  const results = await Promise.all(Array.from({ length: 50 }, () => submit(service, "0000")));
+
+  assert.equal(lookups, 1);
+  assert.ok(results.every((r) => r.status === "WRONG_CODE" || r.status === "INVALID"));
+});
+
+test("closing a session is seen by the very next submission", async () => {
+  const session = {
+    id: SESSION_ID,
+    subjectId: 3,
+    facultyId: 99,
+    isActive: true,
+    correctCode: "4721",
+    windowExpiry: new Date(Date.now() + 15000),
+  };
+  const prisma = buildPrisma({ session });
+  prisma.session.findUnique = async () => ({ ...session });
+  const service = setup(prisma).load("services/attendanceService.js");
+
+  const before = await submit(service, "0000");
+  assert.equal(before.status, "WRONG_CODE");
+
+  session.isActive = false;
+  service.invalidateSessionCache(SESSION_ID);
+  const after = await submit(service, "4721");
+
+  assert.equal(after.status, "INVALID");
+  assert.match(after.reason, /no longer active/i);
+});
+
+test("a failed session lookup is not cached", async () => {
+  const prisma = buildPrisma();
+  const findSession = prisma.session.findUnique;
+  let fail = true;
+  prisma.session.findUnique = async (args) => {
+    if (fail) throw new Error("database unavailable");
+    return findSession(args);
+  };
+  const service = setup(prisma).load("services/attendanceService.js");
+
+  await assert.rejects(submit(service, "4721"), /database unavailable/);
+
+  fail = false;
+  const result = await submit(service, "4721");
+  assert.equal(result.status, "PRESENT");
+});

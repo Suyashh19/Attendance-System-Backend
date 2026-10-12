@@ -21,28 +21,51 @@ const MAX_CODE_ATTEMPTS = 3;
 // Wrong-code tries per student per session (RAM only; the window is a few seconds)
 const codeAttempts = new Map();
 
-// Simple internal session cache (lives purely in RAM, highly efficient)
+// Session lookups shared by every submission (RAM only). The pending query itself is
+// cached, so a burst of students arriving together runs one query instead of one each.
 const sessionCache = new Map();
 
-async function getSessionCached(sessionId) {
-  const now = Date.now();
-  const cached = sessionCache.get(sessionId);
-  
-  // Cache for only 2 seconds. Limits DB hits without causing stale state issues if a professor ends the session.
-  if (cached && (now - cached.timestamp < 2000)) {
-    return cached.data;
-  }
+// Closed, expired or missing sessions are only remembered briefly
+const SHORT_CACHE_MS = 2000;
+// Network-transit allowance added to the attendance window
+const WINDOW_GRACE_MS = 2000;
 
-  const session = await prisma.session.findUnique({
-    where: { id: Number(sessionId) },
-    include: { subject: { select: { id: true, name: true, code: true } } },
-  });
+function getSessionCached(sessionId) {
+  const key = Number(sessionId);
+  const cached = sessionCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) return cached.promise;
 
-  if (session) {
-    sessionCache.set(sessionId, { data: session, timestamp: now });
-  }
-  
-  return session;
+  const entry = { promise: null, expiresAt: Infinity };
+  entry.promise = prisma.session
+    .findUnique({
+      where: { id: key },
+      include: { subject: { select: { id: true, name: true, code: true } } },
+    })
+    .then((session) => {
+      // An open session cannot change until it is closed, and closing clears it
+      // (invalidateSessionCache), so it is kept for its whole window.
+      const windowEnd = session?.isActive && session.windowExpiry
+        ? new Date(session.windowExpiry).getTime() + WINDOW_GRACE_MS
+        : 0;
+      entry.expiresAt = Math.max(windowEnd, Date.now() + SHORT_CACHE_MS);
+      if (!session && sessionCache.get(key) === entry) sessionCache.delete(key);
+      return session;
+    })
+    .catch((err) => {
+      if (sessionCache.get(key) === entry) sessionCache.delete(key);
+      throw err;
+    });
+
+  sessionCache.set(key, entry);
+  return entry.promise;
+}
+
+/**
+ * Forget a cached session. Call whenever a session is closed.
+ * @param {number} sessionId
+ */
+function invalidateSessionCache(sessionId) {
+  sessionCache.delete(Number(sessionId));
 }
 
 /**
@@ -65,7 +88,7 @@ async function submitAttendance({
   const submittedCode = code != null ? String(code).trim() : null;
 
   // ── Optimization: In-Memory cache for session ─────────────────────────────
-  // We fetch the session using our 2-second RAM cache to prevent DB connection exhaustion under high load.
+  // The session comes from the RAM cache to prevent DB connection exhaustion under high load.
   const session = await getSessionCached(sessionId);
 
   if (!session) {
@@ -126,8 +149,7 @@ async function submitAttendance({
 
   // ─── Layer 5: Time-bound check (Strict windowExpiry from DB) ──────────────
   // We add a tiny 2-second grace period purely for network transit.
-  const gracePeriodMs = 2000;
-  const expiryTime = new Date(session.windowExpiry).getTime() + gracePeriodMs;
+  const expiryTime = new Date(session.windowExpiry).getTime() + WINDOW_GRACE_MS;
 
   if (submittedAt.getTime() > expiryTime) {
     const overdue = Math.round((submittedAt.getTime() - expiryTime) / 1000);
@@ -260,4 +282,4 @@ async function markAbsentees(sessionId) {
   return absentees.map((e) => e.studentId);
 }
 
-module.exports = { submitAttendance, markAbsentees };
+module.exports = { submitAttendance, markAbsentees, invalidateSessionCache };

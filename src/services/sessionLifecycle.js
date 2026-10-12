@@ -5,7 +5,7 @@
  */
 
 const prisma = require("../config/db");
-const { markAbsentees } = require("./attendanceService");
+const { markAbsentees, invalidateSessionCache } = require("./attendanceService");
 const {
   broadcastSessionEnded,
   notifyStudent,
@@ -72,6 +72,7 @@ async function finalizeSession(sessionId, { notify = true } = {}) {
     where: { id: sessionId, isActive: true },
     data: { isActive: false, endTime: new Date() },
   });
+  invalidateSessionCache(sessionId);
 
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
@@ -205,6 +206,7 @@ async function closeLeftoverSession(session) {
     where: { id: session.id, isActive: true },
     data: { isActive: false, endTime: new Date() },
   });
+  invalidateSessionCache(session.id);
 }
 
 module.exports = {

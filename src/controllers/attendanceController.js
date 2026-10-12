@@ -9,6 +9,26 @@ const prisma = require("../config/db");
 
 const EDITABLE_STATUSES = ["PRESENT", "ABSENT"];
 
+// The faculty's live count is refreshed at most once per interval per session,
+// however many students are marked present in that time.
+const COUNT_PUSH_INTERVAL_MS = 500;
+const pendingCountPushes = new Map();
+
+function scheduleFacultyCount(facultyId, sessionId) {
+  if (pendingCountPushes.has(sessionId)) return;
+
+  const timer = setTimeout(() => {
+    // Cleared before counting, so a submission landing mid-query schedules the next push
+    pendingCountPushes.delete(sessionId);
+    prisma.attendance
+      .count({ where: { sessionId, status: "PRESENT" } })
+      .then((presentCount) => notifyFacultyCount(facultyId, sessionId, presentCount))
+      .catch((err) => console.error("[Attendance Count Error]", err));
+  }, COUNT_PUSH_INTERVAL_MS);
+  timer.unref();
+  pendingCountPushes.set(sessionId, timer);
+}
+
 // Student: Submit the attendance code typed from the faculty's screen
 exports.submitAttendance = async (req, res, next) => {
   try {
@@ -37,10 +57,7 @@ exports.submitAttendance = async (req, res, next) => {
 
     // Keep the faculty's live present count in sync
     if (result.status === "PRESENT" && result.facultyId) {
-      prisma.attendance
-        .count({ where: { sessionId, status: "PRESENT" } })
-        .then((presentCount) => notifyFacultyCount(result.facultyId, sessionId, presentCount))
-        .catch((err) => console.error("[Attendance Count Error]", err));
+      scheduleFacultyCount(result.facultyId, sessionId);
     }
 
     res.json({
