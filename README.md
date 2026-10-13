@@ -1,141 +1,233 @@
-# 🚀 Real-Time Intelligent Attendance System (Backend)
+# Attendance System — Backend
 
-### 🔐 Secure • 📡 Real-Time • ✅ Verified • ⚡ Ultra-Performant
+Node.js + Express API for a real-time classroom attendance system. A faculty member opens a 15-second attendance window, shows a 4-digit code to the class, and each student types it into the mobile app from the one phone their account is locked to.
 
-A production-ready Node.js + Express backend designed to power a frictionless, highly-secure student attendance system. By leveraging a multi-layered verification pipeline, real-time WebSockets, robust PostgreSQL bindings, and a short-lived classroom code, this architecture is built to curb proxy attendance and device sharing. 
-
----
-
-## 📌 1. Core Verification Pipeline
-The core innovation is our `mark-attendance` flow, which validates student submissions sequentially in under ~80ms using minimal database connections:
-
-1. **Identity & Email Verification**: Enforces 6-digit OTP verification via **Resend** during registration and password recovery to ensure email ownership.
-2. **Session Active Validation**: Ensures strict enforcement of the 15-second submission window.
-3. **Device Hardware Binding**: Locks students to a single physical device UUID (`deviceId`) permanently. Cross-device cheating triggers instant rejections.
-4. **Manual Code Entry**: The faculty shows a random 4-digit code; each student types it in. The code is never sent to student devices, and a student gets 3 tries before the attempt is marked `INVALID`.
-5. **Anti-Spam Race Condition Protection**: Internal Prisma interception traps high-frequency duplicate submissions (`P2002`).
-
-## ⚡ 2. Performance & Scalability Enhancements
-The architecture is aggressively optimized for **bursty traffic spikes** (e.g., a massive classroom clicking submit within the same 5 milliseconds):
-
-- **In-Memory Zero-Latency Cache:** Utilizes an ephemeral Node.js `Map` with a 2-second TTL for active `Session` checks to entirely suppress database connection surges during peak events.
-- **Relational Data Consolidation:** Condenses multi-table validity sweeps into a single, flat Prisma query, minimizing Node garbage collection overhead and maxing out the Neon database pooler efficiency.
-- **B-Tree Lookups:** Ensures `deviceId` and `studentId` are fully B-Tree indexed for instant O(log N) validations without sequence scans.
+The mobile app lives in a separate repository: [Attendance-System-App](https://github.com/Suyashh19/Attendance-System-App).
 
 ---
 
-## 🛠 3. Tech Stack Deep Dive
+## How attendance is verified
 
-* **Runtime**: Node.js (v18+)
-* **Framework**: Express.js
-* **Database Engine**: PostgreSQL (Neon Serverless)
-* **ORM Toolkit**: Prisma
-* **Real-Time Layer**: Socket.IO (Event-driven broadcasts)
-* **Email Engine**: Resend (Transactional OTP delivery)
-* **Push Notifications**: Expo Server SDK (`expo-server-sdk`)
-* **Authentication Security**: JWT (`jsonwebtoken`) & Hash logic (`bcrypt`)
+`POST /api/attendance/submit` runs these checks in order (`src/services/attendanceService.js`):
+
+1. **Session is active** — the session exists and has not been closed.
+2. **Enrollment** — the student is enrolled in the subject and approved by the faculty.
+3. **No duplicate** — one record per student per session; a repeat submission returns the first result.
+4. **Device lock** — the first submission locks the account to that phone's device ID. Any other phone is rejected, and one phone cannot be used by two accounts.
+5. **Time window** — the submission must arrive within the 15-second window (plus 2 seconds for network transit).
+6. **Code** — the 4-digit code must match. The code is never sent to student devices. A student gets 3 tries before the attempt is recorded as `INVALID`.
+
+The result is `PRESENT`, `INVALID` or `WRONG_CODE` (tries remaining). When the session closes, every approved student who did not submit is marked `ABSENT`.
+
+### Session lifecycle
+
+- Starting a session closes any session still open for that subject.
+- The server closes a session by itself 10 seconds after its window ends, in case the faculty never taps "End".
+- On startup the server picks up sessions left open by a restart and closes or re-arms them.
+
+### Accounts
+
+- Registration and password reset are confirmed with a 6-digit email OTP (valid for 5 minutes, one request per 30 seconds), sent through Resend.
+- A student can move their account to a new phone with an email OTP, once every 30 days.
+- JWTs are valid for 7 days.
 
 ---
 
-## 📁 4. Project Architecture
+## Tech stack
 
-The codebase adheres strictly to the Controller-Service-Route paradigm to separate HTTP transport from deep business constraints:
+| Area | Choice |
+|---|---|
+| Runtime | Node.js (CommonJS) |
+| Framework | Express 5 |
+| Database | PostgreSQL (Neon) with Prisma 5 |
+| Real-time | Socket.IO |
+| Email | Resend |
+| Push notifications | Expo Server SDK |
+| Auth | JWT + bcrypt |
+| Reports | ExcelJS |
+
+---
+
+## Project structure
 
 ```text
+server.js                # HTTP server + Socket.IO startup
 src/
-├── config/             # DB initialization & WebSocket singletons
-├── controllers/        # Express handlers (Auth, Subjects, Sessions, Attendance)
-├── middleware/         # Security layers: JWT checks, Role guards, Input sanitizers
-├── models/             # Application structural prototypes 
-├── routes/             # API definition endpoints
-├── services/           # Heavy Operations: (Attendance verification, Analytics mapping, Expo notifications)
-├── sockets/            # Live Socket.IO room management (subject_123, user_456)
-└── app.js              # Express app boosting
-server.js               # Primary HTTP execution server
-tests/                  # Unit tests (node --test), no database needed
-scripts/                # One-off database maintenance scripts
+├── app.js               # Express app and route mounting
+├── config/              # Prisma client, Socket.IO singleton
+├── controllers/         # Request handlers
+├── middleware/          # JWT auth, role guard, validation, error handler
+├── routes/              # Endpoint definitions
+├── services/            # Attendance checks, session lifecycle, OTP, email, push, reports
+└── sockets/             # Socket authentication and room handling
 prisma/
- └── schema.prisma      # Central DB Schema declaration & index management
-postman_collection.json # Local API blueprint testing schema
+├── schema.prisma        # User, Subject, Enrollment, Session, Attendance, Otp
+└── migrations/
+tests/                   # Unit tests (node --test), no database needed
+scripts/                 # One-off database maintenance scripts
+postman_collection.json  # API collection for manual testing
 ```
 
 ---
 
-## 🚀 5. Quick Start / Local Installation
+## Getting started
 
 ### Prerequisites
-- Node.js (v18 LTS recommended)
-- PostgreSQL Database URL (Local or Neon equivalent)
 
-### Step 1: Install Dependencies
+- Node.js 21 or newer (the test command relies on it)
+- A PostgreSQL database URL (local or Neon)
+- A Resend API key for OTP emails
+
+### 1. Install
+
 ```bash
-git clone <repository-url>
-cd attendance-system
+git clone https://github.com/Suyashh19/Attendance-System-Backend.git
+cd Attendance-System-Backend
 npm install
 ```
 
-### Step 2: Environment Configuration (`.env`)
-Create a `.env` dynamically configuring the connection pools:
+`npm install` also generates the Prisma client.
+
+### 2. Configure
+
+Create a `.env` file in the project root:
+
 ```env
-DATABASE_URL="postgresql://user:password@hostname.../db?sslmode=require&connection_limit=20&pool_timeout=15"
-JWT_SECRET="your_secure_secret"
-RESEND_API_KEY="re_your_api_key_from_resend"
+DATABASE_URL="postgresql://user:password@host/db?sslmode=require&connection_limit=20&pool_timeout=15"
+JWT_SECRET="a_long_random_secret"
+RESEND_API_KEY="re_your_key"
 PORT=5000
 ```
 
-### Step 3: Hydrate the Database
-Synchronize the Prisma models into your Postgres instance without losing structure data:
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `JWT_SECRET` | Yes | Signs and verifies login tokens |
+| `RESEND_API_KEY` | Yes | Sends OTP emails |
+| `PORT` | No | Defaults to `5000` |
+| `REPORT_TIMEZONE` | No | Time zone used in Excel reports, defaults to `Asia/Kolkata` |
+| `NODE_ENV` | No | `development` adds error details to API responses |
+
+### 3. Create the tables
+
 ```bash
 npx prisma db push
 ```
 
-### Step 4: Boot up
+### 4. Run
+
 ```bash
 npm run dev
-# Server logs "Ready for REST and Socket.IO connections" on localhost
 ```
 
-### Step 5: Run the tests
-The tests replace the database and Socket.IO with fakes, so they need no setup (Node 21+):
+The server logs `Ready for REST and Socket.IO connections` once it is listening.
+
+### 5. Test
+
 ```bash
 npm test
 ```
 
----
-
-## 📡 6. WebSocket Connectivity & Notification Flow
-
-Socket authentication requires injecting a valid JWT as a client query parameter.
-
-**Client Listens To:**
-- `session_started` : Broadcasts to `subject_{id}` rooms with session timers and the code length immediately upon class start (the code itself is not sent).
-- `session_ended` : Broadcast lock closures.
-- `attendance_result` : Directed individually to `user_{id}` private rooms containing the final result (`PRESENT` or `INVALID`).
-- `attendance_count` : Sent to the faculty's `user_{id}` room with the running `presentCount` for the live session.
-
-**Expo Push Notifications:**
-The backend seamlessly batches and fires out-of-band push alerts to registered Mobile devices whenever critical lifecycle events (like session activations) trigger.
+The tests replace the database and Socket.IO with fakes, so they need no setup.
 
 ---
 
-## 📘 7. REST API Coverage
+## REST API
 
-A rich **Postman Collection** is included (`postman_collection.json`) encapsulating the headers, route params, and authorization checks. 
+All routes are under `/api`. Every route except registration, login and the OTP routes needs an `Authorization: Bearer <token>` header.
 
-**Critical Core Endpoints:**
-- `POST /api/auth/send-signup-otp` (Request registration code)
-- `POST /api/auth/verify-signup-otp` (Validate code for registration)
-- `POST /api/auth/forgot-password` (Trigger password recovery code)
-- `POST /api/auth/login` (Obtain Access Matrix)
-- `POST /api/auth/device-change/request` and `/confirm` (Move a student account to a new phone with an email OTP, once every 30 days)
-- `POST /api/sessions/start` (Initializes time bounds)
-- `POST /api/sessions/:sessionId/end` (Closes the session and returns the roster; the server also closes it by itself shortly after the window)
-- `GET /api/sessions/my-active` (The faculty's open session, to reopen it after an app restart)
-- `POST /api/attendance/submit` (The Heavy-Lift Validation Route)
-- `GET /api/attendance/subject/:subjectId/analytics` (Generates faculty attendance heat maps)
+### Auth — `/api/auth`
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/send-signup-otp` | Email a registration OTP |
+| POST | `/verify-signup-otp` | Check the registration OTP |
+| POST | `/register` | Create an account |
+| POST | `/login` | Log in and receive a JWT |
+| POST | `/forgot-password` | Email a password-reset OTP |
+| POST | `/reset-password` | Set a new password with the OTP |
+| GET | `/me` | Current user's profile |
+| POST | `/update-prn` | Update the student's PRN |
+| POST | `/update-password` | Change password |
+| POST | `/push-token` | Save the Expo push token |
+| POST | `/device-change/request` | Email an OTP to move the account to a new phone |
+| POST | `/device-change/confirm` | Confirm the move |
+| DELETE | `/delete-account` | Delete the account |
+
+### Subjects — `/api/subjects`
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| GET | `/` or `/my` | Any | Subjects the user teaches or is enrolled in |
+| POST | `/` | Faculty | Create a subject |
+| DELETE | `/:id` | Faculty | Delete a subject |
+
+### Enrollments — `/api/enrollments`
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| POST | `/enroll` | Student | Request to join a subject by its code |
+| DELETE | `/:subjectId/unenroll` | Student | Leave a subject |
+| POST | `/` | Faculty | Enroll a student directly |
+| GET | `/:subjectId` | Faculty | List a subject's enrollments |
+| PUT | `/subject/:subjectId/student/:studentId/status` | Faculty | Approve or reject a request |
+
+### Sessions — `/api/sessions`
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| POST | `/start` | Faculty | Open an attendance window and get the code |
+| POST | `/:sessionId/end` | Faculty | Close the session and get the roster |
+| GET | `/my-active` | Faculty | The faculty's open session, to reopen it after an app restart |
+| GET | `/recent` | Faculty | Recent sessions |
+| GET | `/:subjectId/history` | Faculty | A subject's past sessions |
+| GET | `/:subjectId/active` | Any | The subject's open session, if any |
+
+### Attendance — `/api/attendance`
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| POST | `/submit` | Student | Submit `{ sessionId, code, deviceId }` |
+| GET | `/history` | Student | The student's attendance history |
+| GET | `/subject/:subjectId/my-record` | Student | The student's record for one subject |
+| GET | `/subject/:subjectId/analytics` | Faculty | Attendance statistics for a subject |
+| GET | `/session/:sessionId` | Faculty | Roster for one session |
+| PUT | `/session/:sessionId/student/:studentId` | Faculty | Manually change a student's status |
+
+### Reports — `/api/analytics`
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| GET | `/export/:subjectId` | Faculty | Download a subject's attendance as an Excel file |
 
 ---
 
-## 👨‍💻 Maintainer
+## Socket.IO
 
-Designed as the core brain mapping device binding and strict timeline enforcement into educational and corporate attendance verifications.
+Connect with the JWT in the handshake (`auth: { token }`, or a `token` query parameter). Connections without a valid token are dropped. Each socket joins its private `user_{id}` room automatically.
+
+**Client sends**
+
+| Event | Payload | Effect |
+|---|---|---|
+| `join_subject` | `{ subjectId }` | Join the `subject_{id}` room |
+| `leave_subject` | `{ subjectId }` | Leave it |
+
+**Server sends**
+
+| Event | Room | Meaning |
+|---|---|---|
+| `session_started` | `subject_{id}` | A window opened; carries the timers and the code length, never the code |
+| `session_ended` | `subject_{id}` | The session closed |
+| `attendance_result` | `user_{id}` (student) | The student's final status for the session |
+| `attendance_count` | `user_{id}` (faculty) | Running count of students marked present |
+
+Students with a saved push token also get an Expo push notification when a session starts and when their result is final.
+
+---
+
+## Deployment
+
+`npm run build` installs dependencies, generates the Prisma client, drops legacy columns and pushes the schema; `npm start` runs the server.
+
+CORS currently allows every origin, for both REST and Socket.IO. Restrict it before exposing the API to anything other than the mobile app.
