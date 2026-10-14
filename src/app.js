@@ -21,6 +21,20 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Health check for uptime pingers and the app's launch warm-up.
+// ?db=1 also wakes the database (Neon suspends it when idle).
+app.get("/health", async (req, res) => {
+  if (req.query.db !== "1") return res.json({ ok: true });
+  try {
+    const prisma = require("./config/db");
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ ok: true, db: true });
+  } catch (err) {
+    console.error("[Health] Database check failed:", err.message);
+    res.status(503).json({ ok: false, db: false });
+  }
+});
+
 // Main App Routing
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
