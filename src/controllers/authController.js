@@ -3,6 +3,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { sendOtpEmail } = require("../services/emailService");
 const { generateOTP } = require("../services/otpService");
+const { WEB, APP, isWebRequest } = require("../middleware/platformMiddleware");
 
 const MIN_PASSWORD_LENGTH = 6;
 const MAX_OTP_ATTEMPTS = 5;
@@ -95,8 +96,16 @@ exports.login = async (req, res) => {
 
     if (!valid) return res.status(401).json({ error: "Incorrect email or password" });
 
+    // The web app is for faculty only; students are bound to their phone
+    const platform = isWebRequest(req) ? WEB : APP;
+    if (platform === WEB && user.role !== "faculty") {
+      return res.status(403).json({
+        error: "This account is linked to a mobile device. Please use the mobile app.",
+      });
+    }
+
     const token = jwt.sign(
-      { userId: user.id, role: user.role },
+      { userId: user.id, role: user.role, platform },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );

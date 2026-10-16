@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const { corsOrigin } = require("./config/cors");
 
 const { errorMiddleware } = require("./middleware/errorMiddleware");
 
@@ -14,10 +15,11 @@ const analyticsRoutes = require("./routes/analyticsRoutes");
 
 const app = express();
 
-// Enable CORS with wildcard for development/initial deployment
-// In strict production, this should be replaced with `origin: process.env.FRONTEND_URL`
+// Only the web app's origin (FRONTEND_URL) may call the API from a browser.
+// Content-Disposition is exposed so the web app can read report file names.
 app.use(cors({
-  origin: "*"
+  origin: corsOrigin,
+  exposedHeaders: ["Content-Disposition"],
 }));
 app.use(express.json());
 

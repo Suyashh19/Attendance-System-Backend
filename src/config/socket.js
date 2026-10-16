@@ -14,6 +14,7 @@
  */
 
 const { Server } = require("socket.io");
+const { corsOrigin } = require("./cors");
 
 let io = null;
 
@@ -26,7 +27,7 @@ let io = null;
 function initSocket(httpServer) {
   io = new Server(httpServer, {
     cors: {
-      origin: "*", // lock this down in production
+      origin: corsOrigin,
       methods: ["GET", "POST"],
     },
   });

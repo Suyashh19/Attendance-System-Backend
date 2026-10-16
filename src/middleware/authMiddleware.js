@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const { isAllowedToken } = require("./platformMiddleware");
 
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -8,18 +9,24 @@ const authMiddleware = (req, res, next) => {
   }
 
   // Handle "Bearer <token>" format
-  const token = authHeader.startsWith("Bearer ") 
+  const token = authHeader.startsWith("Bearer ")
     ? authHeader.split(" ")[1]
-     
+
     : authHeader;
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded; // attach user info
-    next();
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
   } catch (err) {
     return res.status(401).json({ error: "Invalid token" });
   }
+
+  if (!isAllowedToken(decoded)) {
+    return res.status(403).json({ error: "This account can only be used in the mobile app" });
+  }
+
+  req.user = decoded; // attach user info
+  next();
 };
 
 module.exports = authMiddleware;

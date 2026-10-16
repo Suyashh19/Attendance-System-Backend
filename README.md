@@ -97,6 +97,7 @@ DATABASE_URL="postgresql://user:password@host/db?sslmode=require&connection_limi
 JWT_SECRET="a_long_random_secret"
 RESEND_API_KEY="re_your_key"
 PORT=5000
+FRONTEND_URL="https://your-web-app.vercel.app"
 ```
 
 | Variable | Required | Purpose |
@@ -105,6 +106,7 @@ PORT=5000
 | `JWT_SECRET` | Yes | Signs and verifies login tokens |
 | `RESEND_API_KEY` | Yes | Sends OTP emails |
 | `PORT` | No | Defaults to `5000` |
+| `FRONTEND_URL` | No | Web app origin(s) allowed by CORS, comma-separated. Unset allows every origin |
 | `REPORT_TIMEZONE` | No | Time zone used in Excel reports, defaults to `Asia/Kolkata` |
 | `NODE_ENV` | No | `development` adds error details to API responses |
 
@@ -143,7 +145,7 @@ All routes are under `/api`. Every route except registration, login and the OTP 
 | POST | `/send-signup-otp` | Email a registration OTP |
 | POST | `/verify-signup-otp` | Check the registration OTP |
 | POST | `/register` | Create an account |
-| POST | `/login` | Log in and receive a JWT |
+| POST | `/login` | Log in and receive a JWT. Send `platform: "web"` from the web app |
 | POST | `/forgot-password` | Email a password-reset OTP |
 | POST | `/reset-password` | Set a new password with the OTP |
 | GET | `/me` | Current user's profile |
@@ -153,6 +155,14 @@ All routes are under `/api`. Every route except registration, login and the OTP 
 | POST | `/device-change/request` | Email an OTP to move the account to a new phone |
 | POST | `/device-change/confirm` | Confirm the move |
 | DELETE | `/delete-account` | Delete the account |
+
+#### Web app access
+
+The web app is a stand-in for iPhone faculty, so it is faculty-only:
+
+- A login counts as web when the body has `platform: "web"` or the request carries an `Origin` header (browsers send one; the mobile app does not). Students get `403` there.
+- Tokens carry a `platform` claim (`web` or `app`). A web token for anyone but faculty is refused by every protected route and by Socket.IO. Tokens without the claim predate it and are treated as app tokens.
+- Sign-up (`/send-signup-otp`, `/verify-signup-otp`, `/register`) and `/device-change/*` are app-only.
 
 ### Subjects — `/api/subjects`
 
@@ -230,4 +240,4 @@ Students with a saved push token also get an Expo push notification when a sessi
 
 `npm run build` installs dependencies, generates the Prisma client, drops legacy columns and pushes the schema; `npm start` runs the server.
 
-CORS currently allows every origin, for both REST and Socket.IO. Restrict it before exposing the API to anything other than the mobile app.
+Set `FRONTEND_URL` to the web app's URL to limit browser access, for both REST and Socket.IO. CORS does not affect the mobile app.

@@ -4,6 +4,7 @@
  */
 
 const jwt = require("jsonwebtoken");
+const { isAllowedToken } = require("../middleware/platformMiddleware");
 const { joinUserPrivateRoom } = require("./rooms");
 const { registerAttendanceHandlers } = require("./attendanceSocket");
 
@@ -22,13 +23,20 @@ function registerSocketHandlers(io, socket) {
     return socket.disconnect(true);
   }
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    socket.user = decoded; // { userId, role, ... }
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
   } catch (err) {
     console.error(`[Socket ${socket.id}] Invalid token, disconnecting...`);
     return socket.disconnect(true);
   }
+
+  // Judged by the token, not the Origin header: React Native's WebSocket sends an Origin too
+  if (!isAllowedToken(decoded)) {
+    console.warn(`[Socket ${socket.id}] Web token for a non-faculty account, disconnecting...`);
+    return socket.disconnect(true);
+  }
+  socket.user = decoded; // { userId, role, platform, ... }
 
   // 2. Automatically join the user's private notification room
   joinUserPrivateRoom(socket);
