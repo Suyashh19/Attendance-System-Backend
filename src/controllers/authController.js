@@ -12,10 +12,18 @@ const DEVICE_CHANGE_COOLDOWN_DAYS = 30;
 
 // REGISTER
 exports.register = async (req, res) => {
-  const { email, password, name, rollNo, prn, deviceId, role, otp } = req.body || {};
+  const { email, password, name, rollNo, prn, role, otp } = req.body || {};
+
+  // The web app signs up faculty only. Students must sign up in the app, which binds their phone.
+  const web = isWebRequest(req);
+  if (web && role !== "faculty") {
+    return res.status(403).json({ error: "Students sign up in the mobile app" });
+  }
+  // Faculty on the web have no phone to bind
+  const deviceId = web ? null : req.body?.deviceId;
 
   try {
-    if (!deviceId) return res.status(400).json({ error: "Device ID is required for registration" });
+    if (!web && !deviceId) return res.status(400).json({ error: "Device ID is required for registration" });
     if (!otp) return res.status(400).json({ error: "OTP is required for registration" });
     if (role && !ALLOWED_ROLES.includes(role)) return res.status(400).json({ error: "Invalid role" });
 

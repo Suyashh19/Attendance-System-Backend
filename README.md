@@ -162,7 +162,7 @@ The web app is a stand-in for iPhone faculty, so it is faculty-only:
 
 - A login counts as web when the body has `platform: "web"` or the request carries an `Origin` header (browsers send one; the mobile app does not). Students get `403` there.
 - Tokens carry a `platform` claim (`web` or `app`). A web token for anyone but faculty is refused by every protected route and by Socket.IO. Tokens without the claim predate it and are treated as app tokens.
-- Sign-up (`/send-signup-otp`, `/verify-signup-otp`, `/register`) and `/device-change/*` are app-only.
+- `/register` from the web only creates faculty accounts, with no device bound; a student sign-up there gets `403`. `/device-change/*` is app-only.
 
 ### Subjects — `/api/subjects`
 

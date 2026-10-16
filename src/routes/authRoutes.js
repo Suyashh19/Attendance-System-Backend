@@ -5,13 +5,13 @@ const authController = require("../controllers/authController");
 const { validateRegister } = require("../middleware/validationMiddleware");
 const { rejectWeb } = require("../middleware/platformMiddleware");
 
-// Accounts are created in the mobile app only, where the phone gets bound
-router.post("/register", rejectWeb, validateRegister, authController.register);
+// On the web, register only accepts faculty (checked in the controller)
+router.post("/register", validateRegister, authController.register);
 router.post("/login", authController.login);
 
 // OTP Flows
-router.post("/send-signup-otp", rejectWeb, authController.sendSignupOtp);
-router.post("/verify-signup-otp", rejectWeb, authController.verifySignupOtp);
+router.post("/send-signup-otp", authController.sendSignupOtp);
+router.post("/verify-signup-otp", authController.verifySignupOtp);
 router.post("/forgot-password", authController.forgotPassword);
 router.post("/reset-password", authController.resetPassword);
 

@@ -109,14 +109,14 @@ function runRejectWeb(req) {
   return { res, nextCalled };
 }
 
-test("sign-up is refused from the web app", () => {
+test("app-only routes refuse the web app", () => {
   const { res, nextCalled } = runRejectWeb({ body: { platform: "web" } });
 
   assert.equal(nextCalled, false);
   assert.equal(res.statusCode, 403);
 });
 
-test("sign-up is refused from a browser that omits platform", () => {
+test("app-only routes refuse a browser that omits platform", () => {
   const { nextCalled } = runRejectWeb({ headers: { origin: WEB_ORIGIN } });
 
   assert.equal(nextCalled, false);
@@ -166,4 +166,77 @@ test("a faculty web socket stays connected", () => {
   const socket = connectSocket({ userId: 2, role: "faculty", platform: "web" }, WEB_ORIGIN);
 
   assert.equal(socket.disconnected, false);
+});
+
+// ── Sign-up ───────────────────────────────────────────────────────────────────
+
+function buildSignupPrisma() {
+  const created = [];
+  const otp = { id: "otp-1", code: "123456", attempts: 0, expiresAt: new Date(Date.now() + 60000) };
+  return {
+    created,
+    otp: {
+      findFirst: async () => otp,
+      update: async () => otp,
+      deleteMany: async () => ({ count: 1 }),
+    },
+    user: {
+      findUnique: async () => null,
+      findFirst: async () => null,
+      create: async ({ data }) => {
+        created.push(data);
+        return { id: 9, email: data.email, role: data.role, name: data.name };
+      },
+    },
+  };
+}
+
+async function register(body, headers = {}) {
+  const prisma = buildSignupPrisma();
+  const controller = setup(prisma).load("controllers/authController.js");
+  const res = mockResponse();
+  await controller.register({ body: { email: "new@example.com", password: "secret1", name: "New", otp: "123456", ...body }, headers }, res);
+  return { res, created: prisma.created };
+}
+
+test("faculty can sign up on the web app without a device ID", async () => {
+  const { res, created } = await register({ role: "faculty", platform: "web" }, { origin: WEB_ORIGIN });
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(created[0].deviceId, null);
+  assert.equal(created[0].deviceLocked, false);
+});
+
+test("a device ID sent from the web is not bound to the faculty account", async () => {
+  const { created } = await register({ role: "faculty", platform: "web", deviceId: "browser-id" });
+
+  assert.equal(created[0].deviceId, null);
+});
+
+test("students cannot sign up on the web app", async () => {
+  const { res, created } = await register({ role: "student", prn: "P1", platform: "web" });
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(created.length, 0);
+});
+
+test("a browser sign-up with no role is refused, since it would default to student", async () => {
+  const { res } = await register({}, { origin: WEB_ORIGIN });
+
+  assert.equal(res.statusCode, 403);
+});
+
+test("the app still needs a device ID to sign up", async () => {
+  const { res } = await register({ role: "student", prn: "P1" });
+
+  assert.equal(res.statusCode, 400);
+  assert.match(res.body.error, /device id/i);
+});
+
+test("the app still signs students up and binds the phone", async () => {
+  const { res, created } = await register({ role: "student", prn: "P1", deviceId: "phone-9" });
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(created[0].deviceId, "phone-9");
+  assert.equal(created[0].deviceLocked, true);
 });
