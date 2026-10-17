@@ -197,30 +197,66 @@ exports.updatePrn = async (req, res) => {
   }
 };
 
+// Removes a user and everything tied to them. A faculty member's subjects go too,
+// along with their sessions, enrollments and attendance records.
+const removeUserAndData = async (user) => {
+  const userId = user.id;
+  await prisma.$transaction(async (tx) => {
+    // 1. Delete Attendances
+    await tx.attendance.deleteMany({ where: { studentId: userId } });
+    // 2. Delete Enrollments
+    await tx.enrollment.deleteMany({ where: { studentId: userId } });
+    // 3. Delete Subjects/Sessions if Faculty
+    const ownedSubjects = await tx.subject.findMany({ where: { facultyId: userId }, select: { id: true } });
+    if (ownedSubjects.length > 0) {
+      const sIds = ownedSubjects.map(s => s.id);
+      await tx.attendance.deleteMany({ where: { session: { subjectId: { in: sIds } } } });
+      await tx.session.deleteMany({ where: { subjectId: { in: sIds } } });
+      await tx.enrollment.deleteMany({ where: { subjectId: { in: sIds } } });
+      await tx.subject.deleteMany({ where: { facultyId: userId } });
+    }
+    // 4. Pending OTPs for the email
+    await tx.otp.deleteMany({ where: { email: user.email } });
+    // 5. Finally delete the User profile
+    await tx.user.delete({ where: { id: userId } });
+  });
+};
+
 // DELETE ACCOUNT (CASCADING)
 exports.deleteAccount = async (req, res, next) => {
-  const userId = req.user.userId;
   try {
-    await prisma.$transaction(async (tx) => {
-      // 1. Delete Attendances
-      await tx.attendance.deleteMany({ where: { studentId: userId } });
-      // 2. Delete Enrollments
-      await tx.enrollment.deleteMany({ where: { studentId: userId } });
-      // 3. Delete Subjects/Sessions if Faculty
-      const ownedSubjects = await tx.subject.findMany({ where: { facultyId: userId }, select: { id: true } });
-      if (ownedSubjects.length > 0) {
-        const sIds = ownedSubjects.map(s => s.id);
-        await tx.attendance.deleteMany({ where: { session: { subjectId: { in: sIds } } } });
-        await tx.session.deleteMany({ where: { subjectId: { in: sIds } } });
-        await tx.enrollment.deleteMany({ where: { subjectId: { in: sIds } } });
-        await tx.subject.deleteMany({ where: { facultyId: userId } });
-      }
-      // 4. Finally delete the User profile
-      await tx.user.delete({ where: { id: userId } });
-    });
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    await removeUserAndData(user);
     res.json({ message: "Account deleted permanently" });
   } catch (err) {
     console.error("Error deleting account:", err);
+    res.status(500).json({ error: "Failed to delete account" });
+  }
+};
+
+// DELETE ACCOUNT FROM THE WEB PAGE (/delete-account)
+// Google Play requires a way to delete an account without the app. This takes the
+// password directly instead of a login token, because students cannot log in on the web.
+exports.deleteAccountWithPassword = async (req, res) => {
+  const { email, password } = req.body || {};
+
+  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { email: email.trim() } });
+
+    // Same answer for both cases so the response does not reveal which emails are registered
+    const valid = user ? await bcrypt.compare(password, user.password) : false;
+    if (!valid) return res.status(401).json({ error: "Incorrect email or password" });
+
+    await removeUserAndData(user);
+    res.json({ message: "Account deleted permanently" });
+  } catch (err) {
+    console.error("Error deleting account with password:", err);
     res.status(500).json({ error: "Failed to delete account" });
   }
 };

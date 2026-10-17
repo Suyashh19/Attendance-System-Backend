@@ -15,6 +15,9 @@ router.post("/verify-signup-otp", authController.verifySignupOtp);
 router.post("/forgot-password", authController.forgotPassword);
 router.post("/reset-password", authController.resetPassword);
 
+// Used by the public /delete-account page; works for students and faculty alike
+router.post("/delete-account/with-password", authController.deleteAccountWithPassword);
+
 // Current user profile
 const authMiddleware = require("../middleware/authMiddleware");
 router.get("/me", authMiddleware, authController.getProfile);

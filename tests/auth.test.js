@@ -118,3 +118,52 @@ test("an unknown role is rejected at registration", async () => {
   assert.equal(res.statusCode, 400);
   assert.equal(res.body.error, "Invalid role");
 });
+
+// Prisma fake that records which deletes ran inside the account-deletion transaction
+function buildDeletionPrisma(users) {
+  const deleted = [];
+  const tx = {
+    attendance: { deleteMany: async () => deleted.push("attendance") },
+    enrollment: { deleteMany: async () => deleted.push("enrollment") },
+    subject: { findMany: async () => [], deleteMany: async () => deleted.push("subject") },
+    session: { deleteMany: async () => deleted.push("session") },
+    otp: { deleteMany: async () => deleted.push("otp") },
+    user: { delete: async ({ where }) => deleted.push(`user:${where.id}`) },
+  };
+  return {
+    deleted,
+    user: { findUnique: async ({ where }) => users.find((u) => u.email === where.email || u.id === where.id) || null },
+    $transaction: async (fn) => fn(tx),
+  };
+}
+
+test("the delete-account page removes the account when the password is right", async () => {
+  const bcrypt = require("bcrypt");
+  const users = [{ id: 7, email: EMAIL, role: "student", password: await bcrypt.hash("correct-password", 4) }];
+  const prisma = buildDeletionPrisma(users);
+  const controller = setup(prisma).load("controllers/authController.js");
+  const res = mockResponse();
+
+  await controller.deleteAccountWithPassword({ body: { email: EMAIL, password: "correct-password" } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.ok(prisma.deleted.includes("user:7"));
+  assert.ok(prisma.deleted.includes("otp"));
+});
+
+test("the delete-account page deletes nothing on a wrong password or unknown email", async () => {
+  const bcrypt = require("bcrypt");
+  const users = [{ id: 7, email: EMAIL, role: "student", password: await bcrypt.hash("correct-password", 4) }];
+  const prisma = buildDeletionPrisma(users);
+  const controller = setup(prisma).load("controllers/authController.js");
+
+  const wrong = mockResponse();
+  await controller.deleteAccountWithPassword({ body: { email: EMAIL, password: "nope" } }, wrong);
+  const unknown = mockResponse();
+  await controller.deleteAccountWithPassword({ body: { email: "nobody@example.com", password: "nope" } }, unknown);
+
+  assert.equal(wrong.statusCode, 401);
+  assert.equal(unknown.statusCode, 401);
+  assert.equal(wrong.body.error, unknown.body.error);
+  assert.deepEqual(prisma.deleted, []);
+});

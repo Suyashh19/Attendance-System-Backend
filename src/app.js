@@ -1,3 +1,4 @@
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const { corsOrigin } = require("./config/cors");
@@ -36,6 +37,11 @@ app.get("/health", async (req, res) => {
     res.status(503).json({ ok: false, db: false });
   }
 });
+
+// Public pages linked from the Google Play listing
+const PAGES = path.join(__dirname, "pages");
+app.get("/privacy", (req, res) => res.sendFile(path.join(PAGES, "privacy.html")));
+app.get("/delete-account", (req, res) => res.sendFile(path.join(PAGES, "delete-account.html")));
 
 // Main App Routing
 app.use("/api/auth", authRoutes);
