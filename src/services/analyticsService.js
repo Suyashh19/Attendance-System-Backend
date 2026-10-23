@@ -9,6 +9,18 @@ const prisma = require("../config/db");
 const REPORT_TIMEZONE = process.env.REPORT_TIMEZONE || "Asia/Kolkata";
 
 /**
+ * Excel sheet tab name: the subject code and its semester label, e.g. "CS402 Sem 5".
+ * Excel limits tab names to 31 characters and forbids : \ / ? * [ ]
+ * @param {{ code?: string, span?: string | null }} subject
+ * @returns {string}
+ */
+function buildSheetName(subject) {
+  const raw = [subject?.code, subject?.span].filter(Boolean).join(" ");
+  const cleaned = raw.replace(/[:\\/?*[\]]/g, " ").replace(/\s+/g, " ").trim().slice(0, 31).trim();
+  return cleaned || "Attendance Report";
+}
+
+/**
  * Get overall attendance summary for a subject.
  * Returns per-student: total sessions, present, absent, invalid, percentage.
  *
@@ -248,7 +260,7 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
 
   // 5. Create Excel Workbook
   const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet("Attendance Report");
+  const worksheet = workbook.addWorksheet(buildSheetName(subject));
 
   // Define Columns
   const columns = [
@@ -308,8 +320,9 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
   return workbook.xlsx.writeBuffer();
 }
 
-module.exports = { 
-  getAttendanceSummary, 
+module.exports = {
+  buildSheetName,
+  getAttendanceSummary,
   getStudentRecord, 
   getGlobalHistory,
   getHierarchicalHistory,

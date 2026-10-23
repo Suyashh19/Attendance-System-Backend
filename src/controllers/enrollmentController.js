@@ -149,6 +149,30 @@ exports.unenrollSubject = async (req, res, next) => {
   }
 };
 
+// Faculty approves every waiting request for a subject in one go.
+// Only PENDING requests change: students the faculty removed (REJECTED) stay removed.
+exports.approveAllPending = async (req, res, next) => {
+  try {
+    const subjectId = Number(req.params.subjectId);
+
+    const subject = await prisma.subject.findFirst({
+      where: { id: subjectId, facultyId: req.user.userId },
+    });
+    if (!subject) {
+      return res.status(403).json({ error: "Unauthorized for this subject" });
+    }
+
+    const result = await prisma.enrollment.updateMany({
+      where: { subjectId, status: "PENDING" },
+      data: { status: "APPROVED" },
+    });
+
+    res.json({ message: `Approved ${result.count} request(s)`, approved: result.count });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // Faculty updates enrollment status (Approve/Reject)
 exports.updateEnrollmentStatus = async (req, res, next) => {
   try {

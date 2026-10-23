@@ -3,7 +3,7 @@ const router = express.Router();
 
 const authMiddleware = require("../middleware/authMiddleware");
 const { requireRole } = require("../middleware/roleMiddleware");
-const { validateCreateSubject } = require("../middleware/validationMiddleware");
+const { validateCreateSubject, validateUpdateSubject } = require("../middleware/validationMiddleware");
 const subjectController = require("../controllers/subjectController");
 
 router.use(authMiddleware); // All subject routes require auth
@@ -20,6 +20,21 @@ router.post(
   requireRole("faculty"),
   validateCreateSubject,
   subjectController.createSubject
+);
+
+// GET /api/subjects/:id/summary (what a delete would remove)
+router.get(
+  "/:id/summary",
+  requireRole("faculty"),
+  subjectController.getSubjectSummary
+);
+
+// PUT /api/subjects/:id
+router.put(
+  "/:id",
+  requireRole("faculty"),
+  validateUpdateSubject,
+  subjectController.updateSubject
 );
 
 // DELETE /api/subjects/:id

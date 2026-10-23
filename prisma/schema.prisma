@@ -42,6 +42,7 @@ model Subject {
   code      String   // e.g. "CS301"
   facultyId Int
   type      String @default("theory") // "theory" or "practical"
+  span      String? // semester or academic year, e.g. "Sem 5" or "2026-27" (optional label)
 
   faculty     User         @relation("FacultySubjects", fields: [facultyId], references: [id])
   enrollments Enrollment[]

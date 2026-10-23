@@ -38,6 +38,13 @@ router.delete(
   enrollmentController.unenrollSubject
 );
 
+// PUT /api/enrollments/subject/:subjectId/approve-all (every pending request)
+router.put(
+  "/subject/:subjectId/approve-all",
+  requireRole("faculty"),
+  enrollmentController.approveAllPending
+);
+
 // PUT /api/enrollments/subject/:subjectId/student/:studentId/status
 router.put(
   "/subject/:subjectId/student/:studentId/status",
