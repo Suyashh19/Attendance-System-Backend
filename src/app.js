@@ -16,6 +16,10 @@ const analyticsRoutes = require("./routes/analyticsRoutes");
 
 const app = express();
 
+// Render puts one proxy in front of the server. Without this every request would appear to come
+// from the proxy's address, and the per-caller attempt limits would count everyone together.
+app.set("trust proxy", 1);
+
 // Only the web app's origin (FRONTEND_URL) may call the API from a browser.
 // Content-Disposition is exposed so the web app can read report file names.
 app.use(cors({

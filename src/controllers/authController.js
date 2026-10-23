@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const { sendOtpEmail } = require("../services/emailService");
 const { generateOTP } = require("../services/otpService");
 const { WEB, APP, isWebRequest } = require("../middleware/platformMiddleware");
+const { isBlocked, recordFailure, recordSuccess } = require("../middleware/attemptLimiter");
 
 const MIN_PASSWORD_LENGTH = 6;
 const MAX_OTP_ATTEMPTS = 5;
@@ -94,6 +95,10 @@ exports.login = async (req, res) => {
     return res.status(400).json({ error: "Email and password are required" });
   }
 
+  // Wrong passwords are counted per account and per caller, so a password cannot be guessed endlessly
+  const gate = isBlocked("login", email, req.ip);
+  if (gate.blocked) return res.status(429).json({ error: gate.message });
+
   try {
     const user = await prisma.user.findUnique({
       where: { email },
@@ -102,7 +107,11 @@ exports.login = async (req, res) => {
     // Same answer for both cases so the response does not reveal which emails are registered
     const valid = user ? await bcrypt.compare(password, user.password) : false;
 
-    if (!valid) return res.status(401).json({ error: "Incorrect email or password" });
+    if (!valid) {
+      recordFailure("login", email, req.ip);
+      return res.status(401).json({ error: "Incorrect email or password" });
+    }
+    recordSuccess("login", email);
 
     // The web app is for faculty only; students are bound to their phone
     const platform = isWebRequest(req) ? WEB : APP;
@@ -222,11 +231,28 @@ const removeUserAndData = async (user) => {
   });
 };
 
-// DELETE ACCOUNT (CASCADING)
+// DELETE ACCOUNT (CASCADING). The password is required, so a borrowed unlocked phone cannot wipe an account.
 exports.deleteAccount = async (req, res, next) => {
+  const { password } = req.body || {};
+  if (typeof password !== "string" || !password) {
+    return res.status(400).json({ error: "Password is required to delete your account" });
+  }
+
+  const key = `user:${req.user.userId}`;
+  const gate = isBlocked("deleteApp", key, req.ip);
+  if (gate.blocked) return res.status(429).json({ error: gate.message });
+
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
     if (!user) return res.status(404).json({ error: "User not found" });
+
+    // 400, not 401: the session is still valid, only the typed password is wrong
+    const valid = await bcrypt.compare(password, user.password);
+    if (!valid) {
+      recordFailure("deleteApp", key, req.ip);
+      return res.status(400).json({ error: "Incorrect password" });
+    }
+    recordSuccess("deleteApp", key);
 
     await removeUserAndData(user);
     res.json({ message: "Account deleted permanently" });
@@ -246,12 +272,19 @@ exports.deleteAccountWithPassword = async (req, res) => {
     return res.status(400).json({ error: "Email and password are required" });
   }
 
+  const gate = isBlocked("deleteWeb", email, req.ip);
+  if (gate.blocked) return res.status(429).json({ error: gate.message });
+
   try {
     const user = await prisma.user.findUnique({ where: { email: email.trim() } });
 
     // Same answer for both cases so the response does not reveal which emails are registered
     const valid = user ? await bcrypt.compare(password, user.password) : false;
-    if (!valid) return res.status(401).json({ error: "Incorrect email or password" });
+    if (!valid) {
+      recordFailure("deleteWeb", email, req.ip);
+      return res.status(401).json({ error: "Incorrect email or password" });
+    }
+    recordSuccess("deleteWeb", email);
 
     await removeUserAndData(user);
     res.json({ message: "Account deleted permanently" });
@@ -555,13 +588,21 @@ exports.updatePassword = async (req, res) => {
     return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
   }
 
+  const key = `user:${userId}`;
+  const gate = isBlocked("changePassword", key, req.ip);
+  if (gate.blocked) return res.status(429).json({ error: gate.message });
+
   try {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return res.status(404).json({ error: "User not found" });
 
     // 400, not 401: the session is still valid, only the typed password is wrong
     const valid = await bcrypt.compare(String(currentPassword), user.password);
-    if (!valid) return res.status(400).json({ error: "Incorrect current password" });
+    if (!valid) {
+      recordFailure("changePassword", key, req.ip);
+      return res.status(400).json({ error: "Incorrect current password" });
+    }
+    recordSuccess("changePassword", key);
 
     const hashed = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
