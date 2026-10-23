@@ -500,6 +500,52 @@ exports.confirmDeviceChange = async (req, res) => {
   }
 };
 
+// --- Change password with an emailed code (no email to type: it goes to the account's own address) ---
+
+// Step 1: email a code to the logged-in user's registered address
+exports.requestPasswordChange = async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const limitCheck = await validateRateLimit(user.email);
+    if (!limitCheck.valid) return res.status(429).json({ error: limitCheck.error });
+
+    await createAndSendOtp(user.email);
+    res.json({ message: "A code has been sent to your registered email." });
+  } catch (err) {
+    console.error("Request Password Change Error:", err);
+    res.status(500).json({ error: "Failed to send code" });
+  }
+};
+
+// Step 2: the code proves the person holds the registered email, then the new password is saved
+exports.confirmPasswordChange = async (req, res) => {
+  const { otp, newPassword } = req.body || {};
+
+  if (!otp || !newPassword) return res.status(400).json({ error: "Code and new password are required" });
+  if (typeof newPassword !== "string" || newPassword.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const otpCheck = await checkOtp(user.email, otp);
+    if (otpCheck.error) return res.status(400).json({ error: otpCheck.error });
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
+    await prisma.otp.deleteMany({ where: { email: user.email } });
+
+    res.json({ message: "Password updated successfully" });
+  } catch (err) {
+    console.error("Confirm Password Change Error:", err);
+    res.status(500).json({ error: "Failed to update password" });
+  }
+};
+
 exports.updatePassword = async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
   const userId = req.user.userId;

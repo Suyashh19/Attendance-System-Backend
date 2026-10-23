@@ -25,6 +25,9 @@ router.post("/update-prn", authMiddleware, authController.updatePrn);
 router.post("/push-token", authMiddleware, authController.savePushToken);
 router.delete("/delete-account", authMiddleware, authController.deleteAccount);
 router.post("/update-password", authMiddleware, authController.updatePassword);
+// Change password with a code emailed to the account's own address
+router.post("/update-password/request", authMiddleware, authController.requestPasswordChange);
+router.post("/update-password/confirm", authMiddleware, authController.confirmPasswordChange);
 router.post("/device-change/request", authMiddleware, rejectWeb, authController.requestDeviceChange);
 router.post("/device-change/confirm", authMiddleware, rejectWeb, authController.confirmDeviceChange);
 
