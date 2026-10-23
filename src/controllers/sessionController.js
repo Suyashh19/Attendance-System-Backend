@@ -156,7 +156,17 @@ exports.getMyActiveSession = async (req, res, next) => {
   }
 };
 
-// Faculty: View last 10 sessions across all subjects
+const DEFAULT_RECENT_LIMIT = 10;
+const MAX_RECENT_LIMIT = 100;
+
+// ?limit= picks how many sessions come back; anything unusable falls back to the default
+function parseRecentLimit(value) {
+  const limit = parseInt(value, 10);
+  if (!Number.isInteger(limit) || limit < 1) return DEFAULT_RECENT_LIMIT;
+  return Math.min(limit, MAX_RECENT_LIMIT);
+}
+
+// Faculty: View the latest sessions across all subjects (10 unless ?limit= asks for more, up to 100)
 exports.getRecentSessions = async (req, res, next) => {
   try {
     const facultyId = req.user.userId;
@@ -164,7 +174,7 @@ exports.getRecentSessions = async (req, res, next) => {
     const sessions = await prisma.session.findMany({
       where: { facultyId },
       orderBy: { startTime: "desc" },
-      take: 10,
+      take: parseRecentLimit(req.query?.limit),
       include: {
         subject: {
           select: { name: true, code: true, type: true }
@@ -172,26 +182,36 @@ exports.getRecentSessions = async (req, res, next) => {
       }
     });
 
-    const sessionsWithStats = await Promise.all(sessions.map(async (session) => {
-      const totalEnrolled = await prisma.enrollment.count({
-        where: { subjectId: session.subjectId, status: "APPROVED" }
-      });
+    // Two grouped counts for the whole list instead of two queries per session
+    const subjectIds = [...new Set(sessions.map((s) => s.subjectId))];
+    const sessionIds = sessions.map((s) => s.id);
 
-      const presentCount = await prisma.attendance.count({
-        where: { sessionId: session.id, status: "PRESENT" }
-      });
+    const [enrolledRows, presentRows] = sessions.length === 0 ? [[], []] : await Promise.all([
+      prisma.enrollment.groupBy({
+        by: ["subjectId"],
+        where: { subjectId: { in: subjectIds }, status: "APPROVED" },
+        _count: { _all: true },
+      }),
+      prisma.attendance.groupBy({
+        by: ["sessionId"],
+        where: { sessionId: { in: sessionIds }, status: "PRESENT" },
+        _count: { _all: true },
+      }),
+    ]);
 
-      return {
-        id: session.id,
-        subjectId: session.subjectId,
-        subjectName: session.subject.name,
-        subjectCode: session.subject.code,
-        subjectType: session.subject.type,
-        startTime: session.startTime,
-        endTime: session.endTime,
-        presentCount,
-        totalEnrolled
-      };
+    const enrolledBySubject = new Map(enrolledRows.map((r) => [r.subjectId, r._count._all]));
+    const presentBySession = new Map(presentRows.map((r) => [r.sessionId, r._count._all]));
+
+    const sessionsWithStats = sessions.map((session) => ({
+      id: session.id,
+      subjectId: session.subjectId,
+      subjectName: session.subject.name,
+      subjectCode: session.subject.code,
+      subjectType: session.subject.type,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      presentCount: presentBySession.get(session.id) || 0,
+      totalEnrolled: enrolledBySubject.get(session.subjectId) || 0,
     }));
 
     res.json({ sessions: sessionsWithStats });
