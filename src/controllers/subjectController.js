@@ -7,15 +7,29 @@ const prisma = require("../config/db");
 const SUBJECT_TYPES = ["theory", "practical"];
 const MAX_NAME_LENGTH = 100;
 const MAX_CODE_LENGTH = 20;
-const MAX_SPAN_LENGTH = 40;
 
-// The optional semester / academic-year label. undefined = not sent, null = cleared.
-function cleanSpan(value) {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim().replace(/\s+/g, " ");
-  return trimmed === "" ? null : trimmed.slice(0, MAX_SPAN_LENGTH);
+const SPAN_PATTERN = /^(\d{4})-(\d{2})(?: (odd|even))?$/i;
+const SPAN_HINT = 'Choose an academic year like "2026-27", with an Odd or Even semester';
+
+// The optional academic year + semester label, e.g. "2026-27 Odd".
+// Returns { value } (undefined = not sent, null = cleared) or { error } for anything else.
+function parseSpan(raw) {
+  if (raw === undefined) return { value: undefined };
+  if (raw === null) return { value: null };
+  if (typeof raw !== "string") return { error: SPAN_HINT };
+
+  const text = raw.trim().replace(/\s+/g, " ");
+  if (text === "") return { value: null };
+
+  const match = SPAN_PATTERN.exec(text);
+  if (!match) return { error: SPAN_HINT };
+
+  // The second half must be the following year: 2026-27, never 2026-30
+  const start = Number(match[1]);
+  if (Number(match[2]) !== (start + 1) % 100) return { error: SPAN_HINT };
+
+  const term = match[3] ? ` ${match[3][0].toUpperCase()}${match[3].slice(1).toLowerCase()}` : "";
+  return { value: `${match[1]}-${match[2]}${term}` };
 }
 
 exports.createSubject = async (req, res, next) => {
@@ -30,6 +44,9 @@ exports.createSubject = async (req, res, next) => {
       return res.status(400).json({ error: "Type must be theory or practical" });
     }
 
+    const span = parseSpan(req.body.span);
+    if (span.error) return res.status(400).json({ error: span.error });
+
     const existing = await prisma.subject.findFirst({
       where: { code: normalizedCode, type: normalizedType }
     });
@@ -43,7 +60,7 @@ exports.createSubject = async (req, res, next) => {
         code: normalizedCode,
         facultyId,
         type: normalizedType,
-        span: cleanSpan(req.body.span) ?? null,
+        span: span.value ?? null,
       },
     });
 
@@ -53,7 +70,7 @@ exports.createSubject = async (req, res, next) => {
   }
 };
 
-// Faculty: change a subject's name, code, type or semester label (send only what changes)
+// Faculty: change a subject's name, code, type or academic year / semester (send only what changes)
 exports.updateSubject = async (req, res, next) => {
   try {
     const subjectId = Number(req.params.id);
@@ -90,8 +107,9 @@ exports.updateSubject = async (req, res, next) => {
       data.type = type;
     }
 
-    const span = cleanSpan(body.span);
-    if (span !== undefined) data.span = span;
+    const span = parseSpan(body.span);
+    if (span.error) return res.status(400).json({ error: span.error });
+    if (span.value !== undefined) data.span = span.value;
 
     if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: "Nothing to update" });
@@ -216,4 +234,4 @@ exports.deleteSubject = async (req, res, next) => {
   }
 };
 
-exports.cleanSpan = cleanSpan;
+exports.parseSpan = parseSpan;

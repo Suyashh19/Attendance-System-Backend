@@ -40,7 +40,7 @@ const validateCreateSubject = validate({
   name: { required: true, type: "string" },
   code: { required: true, type: "string" },
   type: { required: false, type: "string" },
-  span: { required: false, type: "string" }, // semester / academic year, e.g. "Sem 5"
+  span: { required: false, type: "string" }, // academic year + semester, e.g. "2026-27 Odd"
 });
 
 // Every field is optional on an edit; the controller checks the values it receives

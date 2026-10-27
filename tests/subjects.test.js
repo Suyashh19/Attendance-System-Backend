@@ -59,14 +59,14 @@ async function call(prisma, modulePath, handler, { params = {}, body = {}, userI
   return res;
 }
 
-test("a subject can be created with a semester label, which is tidied up", async () => {
+test("a subject can be created with an academic year and semester, which is tidied up", async () => {
   const prisma = buildPrisma(baseSubjects);
   const res = await call(prisma, "controllers/subjectController.js", "createSubject", {
-    body: { name: "Networks", code: " cn301 ", type: "Theory", span: "  Sem   5  " },
+    body: { name: "Networks", code: " cn301 ", type: "Theory", span: "  2026-27   odd  " },
   });
   assert.equal(res.statusCode, 201);
   assert.equal(res.body.subject.code, "CN301");
-  assert.equal(res.body.subject.span, "Sem 5");
+  assert.equal(res.body.subject.span, "2026-27 Odd");
 });
 
 test("creating without a label stores none", async () => {
@@ -81,22 +81,55 @@ test("editing changes only the fields that were sent", async () => {
   const prisma = buildPrisma(baseSubjects);
   const res = await call(prisma, "controllers/subjectController.js", "updateSubject", {
     params: { id: "1" },
-    body: { name: "  Data Structures & Algorithms ", span: "2026-27" },
+    body: { name: "  Data Structures & Algorithms ", span: "2026-27 Even" },
   });
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.subject.name, "Data Structures & Algorithms");
-  assert.equal(res.body.subject.span, "2026-27");
+  assert.equal(res.body.subject.span, "2026-27 Even");
   assert.equal(res.body.subject.code, "CS201");
   assert.equal(res.body.subject.type, "theory");
 });
 
 test("an empty label clears it", async () => {
-  const prisma = buildPrisma([{ ...baseSubjects[0], span: "Sem 3" }]);
+  const prisma = buildPrisma([{ ...baseSubjects[0], span: "2025-26 Odd" }]);
   const res = await call(prisma, "controllers/subjectController.js", "updateSubject", {
     params: { id: "1" },
     body: { span: "   " },
   });
   assert.equal(res.body.subject.span, null);
+});
+
+test("an academic year without a semester is still accepted", async () => {
+  const prisma = buildPrisma(baseSubjects);
+  const res = await call(prisma, "controllers/subjectController.js", "updateSubject", {
+    params: { id: "1" },
+    body: { span: "2026-27" },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.subject.span, "2026-27");
+});
+
+test("free-text or impossible labels are refused", async () => {
+  for (const span of ["Sem 5", "2026", "2026-30", "2026-27 Summer", 5]) {
+    const prisma = buildPrisma(baseSubjects);
+    const created = await call(prisma, "controllers/subjectController.js", "createSubject", {
+      body: { name: "Networks", code: "CN301", span },
+    });
+    assert.equal(created.statusCode, 400, `create with ${span}`);
+
+    const edited = await call(buildPrisma(baseSubjects), "controllers/subjectController.js", "updateSubject", {
+      params: { id: "1" },
+      body: { span },
+    });
+    assert.equal(edited.statusCode, 400, `edit with ${span}`);
+  }
+});
+
+test("a century rollover year is valid", async () => {
+  const res = await call(buildPrisma(baseSubjects), "controllers/subjectController.js", "createSubject", {
+    body: { name: "Networks", code: "CN301", span: "2099-00 Even" },
+  });
+  assert.equal(res.statusCode, 201);
 });
 
 test("the code is upper-cased on edit", async () => {
