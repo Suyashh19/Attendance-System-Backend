@@ -217,8 +217,11 @@ exports.deleteSubject = async (req, res, next) => {
         where: { subjectId },
       });
 
-      // 3. Delete all enrollments under this subject
+      // 3. Delete all enrollments and leave requests under this subject
       await tx.enrollment.deleteMany({
+        where: { subjectId },
+      });
+      await tx.leaveRequest.deleteMany({
         where: { subjectId },
       });
 

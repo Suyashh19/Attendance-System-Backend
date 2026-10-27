@@ -213,13 +213,15 @@ const removeUserAndData = async (user) => {
   await prisma.$transaction(async (tx) => {
     // 1. Delete Attendances
     await tx.attendance.deleteMany({ where: { studentId: userId } });
-    // 2. Delete Enrollments
+    // 2. Delete Leave requests and Enrollments
+    await tx.leaveRequest.deleteMany({ where: { studentId: userId } });
     await tx.enrollment.deleteMany({ where: { studentId: userId } });
     // 3. Delete Subjects/Sessions if Faculty
     const ownedSubjects = await tx.subject.findMany({ where: { facultyId: userId }, select: { id: true } });
     if (ownedSubjects.length > 0) {
       const sIds = ownedSubjects.map(s => s.id);
       await tx.attendance.deleteMany({ where: { session: { subjectId: { in: sIds } } } });
+      await tx.leaveRequest.deleteMany({ where: { subjectId: { in: sIds } } });
       await tx.session.deleteMany({ where: { subjectId: { in: sIds } } });
       await tx.enrollment.deleteMany({ where: { subjectId: { in: sIds } } });
       await tx.subject.deleteMany({ where: { facultyId: userId } });

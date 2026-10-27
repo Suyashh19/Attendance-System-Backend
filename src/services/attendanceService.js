@@ -14,6 +14,7 @@
  */
 
 const prisma = require("../config/db");
+const { EXCUSED_REASON, approvedLeaveStudentIds, localDay } = require("./leaveService");
 const { validateDevice } = require("./deviceService");
 
 const MAX_CODE_ATTEMPTS = 3;
@@ -242,12 +243,13 @@ async function _markInvalid(
  * Mark enrolled students who did not submit as ABSENT after a session ends.
  * Call this when a faculty member ends a session.
  * @param {number} sessionId
+ * Students with approved leave covering the day are marked EXCUSED instead.
  * @returns {Promise<number[]>} Array of student IDs who were marked ABSENT
  */
 async function markAbsentees(sessionId) {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { subjectId: true },
+    select: { subjectId: true, startTime: true },
   });
   if (!session) throw new Error("Session not found");
 
@@ -269,17 +271,19 @@ async function markAbsentees(sessionId) {
 
   if (absentees.length === 0) return [];
 
+  // Students on approved leave that day are excused, not absent
+  const onLeave = await approvedLeaveStudentIds(session.subjectId, localDay(session.startTime));
+
   await prisma.attendance.createMany({
-    data: absentees.map((e) => ({
-      sessionId,
-      studentId: e.studentId,
-      status: "ABSENT",
-      reason: "Did not submit attendance",
-    })),
+    data: absentees.map((e) =>
+      onLeave.has(e.studentId)
+        ? { sessionId, studentId: e.studentId, status: "EXCUSED", reason: EXCUSED_REASON }
+        : { sessionId, studentId: e.studentId, status: "ABSENT", reason: "Did not submit attendance" }
+    ),
     skipDuplicates: true,
   });
 
-  return absentees.map((e) => e.studentId);
+  return absentees.filter((e) => !onLeave.has(e.studentId)).map((e) => e.studentId);
 }
 
 module.exports = { submitAttendance, markAbsentees, invalidateSessionCache };

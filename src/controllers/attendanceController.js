@@ -7,7 +7,7 @@ const { getAttendanceSummary, getStudentRecord, getHierarchicalHistory } = requi
 const { notifyStudent, notifyFacultyCount } = require("../services/notificationService");
 const prisma = require("../config/db");
 
-const EDITABLE_STATUSES = ["PRESENT", "ABSENT"];
+const EDITABLE_STATUSES = ["PRESENT", "ABSENT", "EXCUSED"];
 
 // The faculty's live count is refreshed at most once per interval per session,
 // however many students are marked present in that time.
@@ -187,7 +187,7 @@ exports.editAttendance = async (req, res, next) => {
     const facultyId = req.user.userId;
 
     if (!EDITABLE_STATUSES.includes(status)) {
-      return res.status(400).json({ error: "Status must be PRESENT or ABSENT" });
+      return res.status(400).json({ error: "Status must be PRESENT, ABSENT or EXCUSED" });
     }
 
     // Verify faculty owns the session

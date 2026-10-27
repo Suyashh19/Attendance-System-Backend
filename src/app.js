@@ -13,6 +13,7 @@ const enrollmentRoutes = require("./routes/enrollmentRoutes");
 const sessionRoutes = require("./routes/sessionRoutes");
 const attendanceRoutes = require("./routes/attendanceRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
+const leaveRoutes = require("./routes/leaveRoutes");
 
 const app = express();
 
@@ -57,6 +58,7 @@ app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/leaves", leaveRoutes);
 
 // 404 handler
 app.use((req, res, next) => {

@@ -46,11 +46,11 @@ async function getAttendanceSummary(subjectId) {
     _count: { status: true },
   });
 
-  // Pivot into studentId → { PRESENT, ABSENT, INVALID }
+  // Pivot into studentId → { PRESENT, ABSENT, INVALID, EXCUSED }
   const pivot = {};
   for (const r of records) {
     if (!pivot[r.studentId]) {
-      pivot[r.studentId] = { PRESENT: 0, ABSENT: 0, INVALID: 0 };
+      pivot[r.studentId] = { PRESENT: 0, ABSENT: 0, INVALID: 0, EXCUSED: 0 };
     }
     pivot[r.studentId][r.status] = r._count.status;
   }
@@ -63,14 +63,12 @@ async function getAttendanceSummary(subjectId) {
   });
 
   const summary = students.map((s) => {
-    const counts = pivot[s.id] || { PRESENT: 0, ABSENT: 0, INVALID: 0 };
+    const counts = pivot[s.id] || { PRESENT: 0, ABSENT: 0, INVALID: 0, EXCUSED: 0 };
     const attended = counts.PRESENT || 0;
     const absents = counts.ABSENT || 0;
     const invalids = counts.INVALID || 0;
     
-    // Total sessions calculated as sum of present, absent, invalid for this student,
-    // OR the overall total sessions - whichever makes more sense
-    // Usually total attendance records per student = total closed sessions they were enrolled for.
+    // Classes the student was counted for. Excused classes (approved leave) are left out.
     const studentTotal = attended + absents + invalids;
     
     const percentage = studentTotal > 0 ? ((attended / studentTotal) * 100).toFixed(1) : "0.0";
@@ -80,6 +78,7 @@ async function getAttendanceSummary(subjectId) {
       PRESENT: attended, 
       ABSENT: absents, 
       INVALID: invalids, 
+      EXCUSED: counts.EXCUSED || 0,
       totalSessions: studentTotal, 
       attendancePercentage: `${percentage}%` 
     };
@@ -110,11 +109,12 @@ async function getStudentRecord(studentId, subjectId) {
     where: { subjectId, isActive: false },
   });
 
-  const counts = { PRESENT: 0, ABSENT: 0, INVALID: 0 };
+  const counts = { PRESENT: 0, ABSENT: 0, INVALID: 0, EXCUSED: 0 };
   for (const a of attendances) counts[a.status] = (counts[a.status] || 0) + 1;
 
-  // Same rule as the faculty summary: measured against the sessions this student has a record for
-  const studentTotal = attendances.length;
+  // Same rule as the faculty summary: measured against the sessions this student has a record for,
+  // leaving out excused classes (approved leave)
+  const studentTotal = attendances.length - counts.EXCUSED;
   const percentage = studentTotal > 0 ? ((counts.PRESENT / studentTotal) * 100).toFixed(1) : "0.0";
 
   return {
@@ -125,6 +125,7 @@ async function getStudentRecord(studentId, subjectId) {
     PRESENT: counts.PRESENT,
     ABSENT: counts.ABSENT,
     INVALID: counts.INVALID,
+    EXCUSED: counts.EXCUSED,
     attendancePercentage: `${percentage}%`,
     records: attendances,
   };
@@ -176,7 +177,8 @@ async function getHierarchicalHistory(studentId) {
         code: subj.code,
         type: subj.type,
         records: [],
-        stats: { PRESENT: 0, ABSENT: 0, INVALID: 0, total: 0 }
+        // `total` counts the classes held for the student; excused classes (approved leave) are left out of it
+        stats: { PRESENT: 0, ABSENT: 0, INVALID: 0, EXCUSED: 0, total: 0 }
       };
     }
 
@@ -188,8 +190,8 @@ async function getHierarchicalHistory(studentId) {
       submittedAt: att.submittedAt
     });
 
-    subjectsMap[subj.id].stats[att.status]++;
-    subjectsMap[subj.id].stats.total++;
+    subjectsMap[subj.id].stats[att.status] = (subjectsMap[subj.id].stats[att.status] || 0) + 1;
+    if (att.status !== "EXCUSED") subjectsMap[subj.id].stats.total++;
   });
 
   return Object.values(subjectsMap);
@@ -307,6 +309,8 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
         cell.font = { color: { argb: "FF065F46" }, bold: true }; // dark green
       } else if (cell.value === "INVALID") {
         cell.font = { color: { argb: "FF991B1B" }, bold: true }; // dark red
+      } else if (cell.value === "EXCUSED") {
+        cell.font = { color: { argb: "FF1D4ED8" }, bold: true }; // blue: approved leave
       } else {
         cell.font = { color: { argb: "FF64748B" } }; // muted slate
       }

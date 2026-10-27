@@ -120,7 +120,9 @@ async function notifyStudent(studentId, result) {
     message:
       result.status === "PRESENT"
         ? "✅ Attendance marked PRESENT"
-        : `❌ Attendance marked ${result.status}: ${result.reason || "Did not submit"}`,
+        : result.status === "EXCUSED"
+          ? "🗓️ Marked EXCUSED: you are on approved leave"
+          : `❌ Attendance marked ${result.status}: ${result.reason || "Did not submit"}`,
   });
 
   // 2. Push Notification (Individual)
@@ -159,10 +161,55 @@ async function sendManyPushNotifications(messages) {
   }
 }
 
+/** Tell a user's open app something changed, so it can refresh. Never throws. */
+function emitToUser(userId, event, payload = {}) {
+  try {
+    getIO().to(`user_${userId}`).emit(event, payload);
+  } catch (err) {
+    console.error(`[Notify] Could not emit ${event}:`, err.message);
+  }
+}
+
+async function pushSafely(token, title, body, data) {
+  if (!token) return;
+  try {
+    await sendPushNotifications([token], title, body, data);
+  } catch (err) {
+    console.error("[Push Error]", err);
+  }
+}
+
+/** A student asked for leave: tell the faculty who will review it. */
+async function notifyLeaveRequested({ facultyId, pushToken, studentName, subjectNames, fromDate, toDate }) {
+  emitToUser(facultyId, "leave_updated", { kind: "requested" });
+  const dates = fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`;
+  await pushSafely(
+    pushToken,
+    `Leave request: ${studentName || "A student"}`,
+    `${subjectNames.join(", ")} · ${dates}`,
+    { type: "leave_requested" }
+  );
+}
+
+/** A faculty member answered a leave request: tell the student. */
+async function notifyLeaveReviewed({ studentId, pushToken, status, subjectName, fromDate, toDate, note }) {
+  emitToUser(studentId, "leave_updated", { kind: "reviewed", status });
+  const approved = status === "APPROVED";
+  const dates = fromDate === toDate ? fromDate : `${fromDate} to ${toDate}`;
+  await pushSafely(
+    pushToken,
+    approved ? "Leave approved" : "Leave not approved",
+    `${subjectName} · ${dates}${note ? ` · ${note}` : ""}`,
+    { type: "leave_reviewed", status }
+  );
+}
+
 module.exports = { 
   broadcastSessionStarted, 
   broadcastSessionEnded, 
   notifyStudent,
   notifyFacultyCount,
-  sendManyPushNotifications 
+  sendManyPushNotifications,
+  notifyLeaveRequested,
+  notifyLeaveReviewed,
 };

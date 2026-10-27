@@ -27,6 +27,7 @@ model User {
   enrollments     Enrollment[]
   sessions        Session[]
   attendances     Attendance[]
+  leaveRequests   LeaveRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -45,8 +46,9 @@ model Subject {
   span      String? // semester or academic year, e.g. "Sem 5" or "2026-27" (optional label)
 
   faculty     User         @relation("FacultySubjects", fields: [facultyId], references: [id])
-  enrollments Enrollment[]
-  sessions    Session[]
+  enrollments   Enrollment[]
+  sessions      Session[]
+  leaveRequests LeaveRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -133,4 +135,30 @@ model Otp {
   createdAt DateTime @default(now())
 
   @@index([email])
+}
+
+
+// ─── LEAVE REQUEST ───────────────────────────────────────────────────────────
+// A student's request for time off in one subject. Approved leave turns the student's
+// missed classes in that period into EXCUSED, which do not count against their percentage.
+
+model LeaveRequest {
+  id         Int       @id @default(autoincrement())
+  studentId  Int
+  subjectId  Int
+  fromDate   String    // first day of leave, "YYYY-MM-DD" in the college's time zone
+  toDate     String    // last day of leave (inclusive)
+  reason     String
+  status     String    @default("PENDING") // "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED"
+  reviewNote String?
+  reviewedAt DateTime?
+
+  student User    @relation(fields: [studentId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subjectId, status])
+  @@index([studentId])
 }

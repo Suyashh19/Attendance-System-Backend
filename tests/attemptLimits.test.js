@@ -14,6 +14,7 @@ async function buildPrisma() {
   const tx = {
     attendance: { deleteMany: async () => ({}) },
     enrollment: { deleteMany: async () => ({}) },
+    leaveRequest: { deleteMany: async () => ({}) },
     subject: { findMany: async () => [], deleteMany: async () => ({}) },
     otp: { deleteMany: async () => ({}) },
     user: { delete: async () => { state.deleted = true; } },

@@ -5,13 +5,15 @@ const { setup } = require("./helpers/mockModules");
 const SESSION_ID = 42;
 const SUBJECT_ID = 5;
 
-// Two approved students: one already PRESENT, one who never submitted
-function buildPrisma() {
+// Two approved students: one already PRESENT, one who never submitted.
+// `leaves` are the approved leave requests the fake database holds.
+function buildPrisma(leaves = []) {
   const session = {
     id: SESSION_ID,
     subjectId: SUBJECT_ID,
     isActive: true,
     endTime: null,
+    startTime: new Date("2026-10-27T05:00:00Z"), // 10:30 in the college's time zone
     subject: { name: "Distributed Systems", code: "CS402" },
   };
   const attendances = [{ sessionId: SESSION_ID, studentId: 1, status: "PRESENT", reason: null, editedByFaculty: false }];
@@ -34,6 +36,9 @@ function buildPrisma() {
     },
     enrollment: {
       findMany: async () => enrollments,
+    },
+    leaveRequest: {
+      findMany: async () => leaves,
     },
     attendance: {
       findMany: async () => attendances,
@@ -111,4 +116,18 @@ test("session history never includes the attendance code", async () => {
 
   assert.equal(history[0].attendanceCount, 3);
   assert.ok(!("correctCode" in history[0]));
+});
+
+test("a student on approved leave is excused, not marked absent, when the session closes", async () => {
+  const prisma = buildPrisma([{ studentId: 2, subjectId: SUBJECT_ID, status: "APPROVED", fromDate: "2026-10-26", toDate: "2026-10-28" }]);
+  const { load } = setup(prisma);
+  const { finalizeSession } = load("services/sessionLifecycle.js");
+
+  const result = await finalizeSession(SESSION_ID);
+
+  const byStudent = Object.fromEntries(result.attendances.map((a) => [a.studentId, a]));
+  assert.equal(byStudent[1].status, "PRESENT");
+  assert.equal(byStudent[2].status, "EXCUSED");
+  assert.equal(byStudent[2].reason, "On approved leave");
+  assert.equal(result.markedAbsent, 0, "an excused student is not counted as absent");
 });

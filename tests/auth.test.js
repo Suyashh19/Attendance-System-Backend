@@ -125,6 +125,7 @@ function buildDeletionPrisma(users) {
   const tx = {
     attendance: { deleteMany: async () => deleted.push("attendance") },
     enrollment: { deleteMany: async () => deleted.push("enrollment") },
+    leaveRequest: { deleteMany: async () => deleted.push("leaveRequest") },
     subject: { findMany: async () => [], deleteMany: async () => deleted.push("subject") },
     session: { deleteMany: async () => deleted.push("session") },
     otp: { deleteMany: async () => deleted.push("otp") },
