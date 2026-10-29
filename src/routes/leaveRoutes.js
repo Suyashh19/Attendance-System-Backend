@@ -16,6 +16,9 @@ router.get("/mine", requireRole("student"), leaveController.getMyLeaves);
 // DELETE /api/leaves/:id (Student withdraws a request that is still waiting)
 router.delete("/:id", requireRole("student"), leaveController.cancelLeave);
 
+// GET /api/leaves/pending (Faculty: waiting requests across all their subjects)
+router.get("/pending", requireRole("faculty"), leaveController.getPendingLeaves);
+
 // GET /api/leaves/subject/:subjectId (Faculty: the subject's requests, waiting ones first)
 router.get("/subject/:subjectId", requireRole("faculty"), leaveController.getSubjectLeaves);
 

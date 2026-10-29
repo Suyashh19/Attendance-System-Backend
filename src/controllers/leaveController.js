@@ -152,6 +152,24 @@ exports.getSubjectLeaves = async (req, res, next) => {
   }
 };
 
+// GET /api/leaves/pending (Faculty: every waiting request across their subjects, oldest first)
+exports.getPendingLeaves = async (req, res, next) => {
+  try {
+    const leaves = await prisma.leaveRequest.findMany({
+      where: { status: "PENDING", subject: { facultyId: req.user.userId } },
+      include: {
+        student: { select: { id: true, name: true, rollNo: true, prn: true } },
+        subject: { select: { id: true, name: true, code: true, type: true } },
+      },
+      orderBy: { createdAt: "asc" },
+      take: LIST_LIMIT,
+    });
+    res.json({ leaves, pending: leaves.length });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // PUT /api/leaves/:id/review  { status: "APPROVED" | "REJECTED", note? }
 exports.reviewLeave = async (req, res, next) => {
   try {
