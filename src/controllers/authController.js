@@ -7,6 +7,7 @@ const { WEB, APP, isWebRequest } = require("../middleware/platformMiddleware");
 const { isBlocked, recordFailure, recordSuccess } = require("../middleware/attemptLimiter");
 
 const MIN_PASSWORD_LENGTH = 6;
+const SAME_PASSWORD_ERROR = "New password must be different from your current password";
 const MAX_OTP_ATTEMPTS = 5;
 const ALLOWED_ROLES = ["student", "faculty"];
 const DEVICE_CHANGE_COOLDOWN_DAYS = 30;
@@ -438,6 +439,10 @@ exports.resetPassword = async (req, res) => {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(400).json({ error: "Invalid OTP" });
 
+    if (await bcrypt.compare(newPassword, user.password)) {
+      return res.status(400).json({ error: SAME_PASSWORD_ERROR });
+    }
+
     const hashed = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
       where: { email },
@@ -570,6 +575,10 @@ exports.confirmPasswordChange = async (req, res) => {
     const otpCheck = await checkOtp(user.email, otp);
     if (otpCheck.error) return res.status(400).json({ error: otpCheck.error });
 
+    if (await bcrypt.compare(newPassword, user.password)) {
+      return res.status(400).json({ error: SAME_PASSWORD_ERROR });
+    }
+
     const hashed = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
     await prisma.otp.deleteMany({ where: { email: user.email } });
@@ -605,6 +614,11 @@ exports.updatePassword = async (req, res) => {
       return res.status(400).json({ error: "Incorrect current password" });
     }
     recordSuccess("changePassword", key);
+
+    // The current password was just verified, so a plain comparison is enough
+    if (String(currentPassword) === newPassword) {
+      return res.status(400).json({ error: SAME_PASSWORD_ERROR });
+    }
 
     const hashed = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({

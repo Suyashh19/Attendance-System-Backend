@@ -6,10 +6,10 @@ const { setup, mockResponse } = require("./helpers/mockModules");
 const EMAIL = "faculty@example.com";
 const USER_ID = 5;
 
-function buildPrisma({ recentOtps = [] } = {}) {
+function buildPrisma({ recentOtps = [], password = "old-hash" } = {}) {
   const state = {
     sentTo: [],
-    password: "old-hash",
+    password,
     deletedFor: [],
     otp: { id: "otp-1", email: EMAIL, code: "123456", attempts: 0, expiresAt: new Date(Date.now() + 60000) },
   };
@@ -18,7 +18,7 @@ function buildPrisma({ recentOtps = [] } = {}) {
     state,
     user: {
       findUnique: async ({ where }) =>
-        where.id === USER_ID ? { id: USER_ID, email: EMAIL, role: "faculty", password: state.password } : null,
+        where.id === USER_ID || where.email === EMAIL ? { id: USER_ID, email: EMAIL, role: "faculty", password: state.password } : null,
       update: async ({ data }) => {
         state.password = data.password;
         return {};
@@ -132,4 +132,68 @@ test("a short or missing new password is refused before the code is checked", as
     assert.equal(prisma.state.password, "old-hash");
     assert.equal(prisma.state.otp.attempts, 0);
   }
+});
+
+// ── The new password must differ from the current one ───────────────────────
+
+const SAME = "New password must be different from your current password";
+
+test("the emailed-code change refuses the current password and keeps the code usable", async () => {
+  const current = await bcrypt.hash("current-pass", 4);
+  const prisma = buildPrisma({ password: current });
+  const controller = setup(prisma).load("controllers/authController.js");
+  const res = mockResponse();
+
+  await controller.confirmPasswordChange(req({ otp: "123456", newPassword: "current-pass" }), res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.error, SAME);
+  assert.equal(prisma.state.password, current);
+  assert.deepEqual(prisma.state.deletedFor, []);
+
+  const retry = mockResponse();
+  await controller.confirmPasswordChange(req({ otp: "123456", newPassword: "another-pass" }), retry);
+  assert.equal(retry.statusCode, 200);
+});
+
+test("the forgot-password reset refuses the current password", async () => {
+  const current = await bcrypt.hash("current-pass", 4);
+  const prisma = buildPrisma({ password: current });
+  const controller = setup(prisma).load("controllers/authController.js");
+  const res = mockResponse();
+
+  await controller.resetPassword({ body: { email: EMAIL, otp: "123456", newPassword: "current-pass" } }, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.error, SAME);
+  assert.equal(prisma.state.password, current);
+});
+
+test("the forgot-password reset still accepts a different password", async () => {
+  const current = await bcrypt.hash("current-pass", 4);
+  const prisma = buildPrisma({ password: current });
+  const controller = setup(prisma).load("controllers/authController.js");
+  const res = mockResponse();
+
+  await controller.resetPassword({ body: { email: EMAIL, otp: "123456", newPassword: "fresh-pass" } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(await bcrypt.compare("fresh-pass", prisma.state.password), true);
+});
+
+test("the current-password change refuses the same password and accepts a different one", async () => {
+  const current = await bcrypt.hash("current-pass", 4);
+  const prisma = buildPrisma({ password: current });
+  const controller = setup(prisma).load("controllers/authController.js");
+
+  const same = mockResponse();
+  await controller.updatePassword(req({ currentPassword: "current-pass", newPassword: "current-pass" }), same);
+  assert.equal(same.statusCode, 400);
+  assert.equal(same.body.error, SAME);
+  assert.equal(prisma.state.password, current);
+
+  const different = mockResponse();
+  await controller.updatePassword(req({ currentPassword: "current-pass", newPassword: "fresh-pass" }), different);
+  assert.equal(different.statusCode, 200);
+  assert.equal(await bcrypt.compare("fresh-pass", prisma.state.password), true);
 });
