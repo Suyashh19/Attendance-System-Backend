@@ -5,7 +5,10 @@
 
 const {
   CODE_LENGTH,
-  WINDOW_SECONDS,
+  MIN_WINDOW_SECONDS,
+  MAX_WINDOW_SECONDS,
+  parseWindowSeconds,
+  sessionWindowSeconds,
   createSession,
   getActiveSession,
   getSessionHistory,
@@ -29,6 +32,13 @@ exports.startSession = async (req, res, next) => {
       return res.status(400).json({ error: "subjectId is required" });
     }
 
+    const windowSeconds = parseWindowSeconds(req.body.windowSeconds);
+    if (windowSeconds === null) {
+      return res.status(400).json({
+        error: `Attendance time must be a whole number of seconds from ${MIN_WINDOW_SECONDS} to ${MAX_WINDOW_SECONDS}.`,
+      });
+    }
+
     // Verify ownership
     const subject = await prisma.subject.findFirst({ where: { id: subjectId, facultyId } });
     if (!subject) {
@@ -48,7 +58,7 @@ exports.startSession = async (req, res, next) => {
     // A session left open from earlier must be closed properly (absentees included)
     await closeOpenSessionsForSubject(subjectId);
 
-    const session = await createSession({ subjectId, facultyId, date, startTime, endTime });
+    const session = await createSession({ subjectId, facultyId, date, startTime, endTime, windowSeconds });
 
     scheduleAutoClose(session);
 
@@ -75,7 +85,7 @@ exports.startSession = async (req, res, next) => {
         codeLength: CODE_LENGTH,
         startTime: session.startTime,
         windowExpiry: session.windowExpiry, // Authoritative source
-        windowSeconds: WINDOW_SECONDS,
+        windowSeconds: sessionWindowSeconds(session),
         serverTime: new Date().toISOString(),
       },
     });
@@ -146,7 +156,7 @@ exports.getMyActiveSession = async (req, res, next) => {
         codeLength: CODE_LENGTH,
         startTime: session.startTime,
         windowExpiry: session.windowExpiry,
-        windowSeconds: WINDOW_SECONDS,
+        windowSeconds: sessionWindowSeconds(session),
         serverTime: new Date().toISOString(),
         presentCount,
       },
@@ -257,7 +267,7 @@ exports.getActiveSession = async (req, res, next) => {
         codeLength: CODE_LENGTH,
         startTime: session.startTime,
         windowExpiry: session.windowExpiry,
-        windowSeconds: WINDOW_SECONDS,
+        windowSeconds: sessionWindowSeconds(session),
         serverTime: new Date().toISOString(),
       },
     });

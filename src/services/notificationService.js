@@ -6,7 +6,7 @@
 
 const { getIO } = require("../config/socket");
 const { Expo } = require("expo-server-sdk");
-const { CODE_LENGTH, WINDOW_SECONDS } = require("./sessionService");
+const { CODE_LENGTH, sessionWindowSeconds } = require("./sessionService");
 
 // Create a new Expo SDK client
 const expo = new Expo();
@@ -65,8 +65,8 @@ async function broadcastSessionStarted(subjectId, sessionData, pushTokens = []) 
     codeLength: CODE_LENGTH,
     startTime: sessionData.startTime,
     windowExpiry: sessionData.windowExpiry,
-    windowSeconds: WINDOW_SECONDS, // Fix for frontend NaN issue
-    timeLimitSeconds: WINDOW_SECONDS,
+    windowSeconds: sessionWindowSeconds(sessionData), // Fix for frontend NaN issue
+    timeLimitSeconds: sessionWindowSeconds(sessionData),
     serverTime: new Date().toISOString(),
   });
 

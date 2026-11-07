@@ -10,6 +10,9 @@
  *   4. Time-bound check (session.windowExpiry, set when the session starts)
  *   5. Correct code validation (code typed manually by the student)
  *
+ * Proctoring: the app reports when the student was on a call or left the app while the
+ * window was open. That marks the student INVALID with the reason, even after PRESENT.
+ *
  * Returns: { status: "PRESENT"|"INVALID"|"WRONG_CODE", reason?: string, attendance }
  */
 
@@ -18,6 +21,17 @@ const { EXCUSED_REASON, approvedLeaveStudentIds, localDay } = require("./leaveSe
 const { validateDevice } = require("./deviceService");
 
 const MAX_CODE_ATTEMPTS = 3;
+
+// What the app can report during the window, and the reason the faculty and student see
+const VIOLATION_REASONS = {
+  PHONE_CALL: "Was on a phone call during attendance",
+  LEFT_APP: "Left the app during attendance",
+};
+
+/** The reason for a reported violation, or null when nothing (or something unknown) was reported. */
+function violationReason(violation) {
+  return Object.prototype.hasOwnProperty.call(VIOLATION_REASONS, violation) ? VIOLATION_REASONS[violation] : null;
+}
 
 // Wrong-code tries per student per session (RAM only; the window is a few seconds)
 const codeAttempts = new Map();
@@ -77,6 +91,7 @@ function invalidateSessionCache(sessionId) {
  * @param {number} params.studentId
  * @param {string} params.code          - Code typed by the student
  * @param {string} params.deviceId
+ * @param {string} [params.violation] - "PHONE_CALL" | "LEFT_APP", reported by the app
  * @returns {Promise<{ status: string, reason?: string, attendance: Object }>}
  */
 async function submitAttendance({
@@ -84,8 +99,10 @@ async function submitAttendance({
   studentId,
   code,
   deviceId,
+  violation,
 }) {
   const submittedAt = new Date();
+  const violationText = violationReason(violation);
   const submittedCode = code != null ? String(code).trim() : null;
 
   // ── Optimization: In-Memory cache for session ─────────────────────────────
@@ -132,6 +149,19 @@ async function submitAttendance({
   }
 
   // ── Layer 3: Duplicate submission check ─────────────────────────────────––
+  // A student marked PRESENT who then takes a call or leaves the app while the window is
+  // still open (e.g. to pass the code on) loses the PRESENT.
+  if (existing && violationText && existing.status === "PRESENT") {
+    const windowOpen = submittedAt.getTime() <= new Date(session.windowExpiry).getTime() + WINDOW_GRACE_MS;
+    if (session.isActive && windowOpen) {
+      const attendance = await prisma.attendance.update({
+        where: { id: existing.id },
+        data: { status: "INVALID", reason: violationText },
+      });
+      return { status: "INVALID", reason: violationText, attendance, facultyId: session.facultyId };
+    }
+  }
+
   if (existing) {
     return {
       status: existing.status,
@@ -146,6 +176,12 @@ async function submitAttendance({
   if (!deviceCheck.valid) {
     return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode,
       deviceCheck.reason);
+  }
+
+  // ── Proctoring: a call or leaving the app during the window makes it INVALID ──
+  if (violationText) {
+    codeAttempts.delete(`${sessionId}:${studentId}`);
+    return _markInvalid(sessionId, studentId, deviceId, submittedAt, submittedCode, violationText);
   }
 
   // ─── Layer 5: Time-bound check (Strict windowExpiry from DB) ──────────────
@@ -286,4 +322,4 @@ async function markAbsentees(sessionId) {
   return absentees.filter((e) => !onLeave.has(e.studentId)).map((e) => e.studentId);
 }
 
-module.exports = { submitAttendance, markAbsentees, invalidateSessionCache };
+module.exports = { submitAttendance, markAbsentees, invalidateSessionCache, VIOLATION_REASONS };

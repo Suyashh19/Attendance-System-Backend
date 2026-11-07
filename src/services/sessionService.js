@@ -10,7 +10,30 @@ const prisma = require("../config/db");
 // ─── Code Generation ──────────────────────────────────────────────────────────
 
 const CODE_LENGTH = 4;
+// Default attendance window; the faculty can choose any length between MIN and MAX
 const WINDOW_SECONDS = 15;
+const MIN_WINDOW_SECONDS = 10;
+const MAX_WINDOW_SECONDS = 15;
+
+/**
+ * Read the window length the faculty asked for.
+ * Missing means the default (older app versions never send it).
+ * @returns {number | null} whole seconds, or null when the value is unusable
+ */
+function parseWindowSeconds(value) {
+  if (value === undefined || value === null || value === "") return WINDOW_SECONDS;
+  const seconds = Number(value);
+  if (!Number.isInteger(seconds) || seconds < MIN_WINDOW_SECONDS || seconds > MAX_WINDOW_SECONDS) return null;
+  return seconds;
+}
+
+/** The window length a session actually got, read from its own start and expiry. */
+function sessionWindowSeconds(session) {
+  const start = session?.startTime ? new Date(session.startTime).getTime() : NaN;
+  const expiry = session?.windowExpiry ? new Date(session.windowExpiry).getTime() : NaN;
+  const seconds = Math.round((expiry - start) / 1000);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : WINDOW_SECONDS;
+}
 
 /**
  * Generate the numeric code the faculty shows and students type in.
@@ -33,9 +56,10 @@ function generateCode() {
  * @param {string} data.date
  * @param {string} data.startTime
  * @param {string} data.endTime
+ * @param {number} [data.windowSeconds] attendance window length, already validated
  * @returns {Promise<Object>} The created Session
  */
-async function createSession({ subjectId, classId, facultyId, date, startTime, endTime }) {
+async function createSession({ subjectId, classId, facultyId, date, startTime, endTime, windowSeconds = WINDOW_SECONDS }) {
   // Use subjectId or classId (for backward/forward compatibility)
   const targetSubjectId = Number(subjectId || classId);
 
@@ -45,6 +69,7 @@ async function createSession({ subjectId, classId, facultyId, date, startTime, e
 
   const scheduledDate = date ? new Date(date) : new Date();
   const correctCode = generateCode();
+  const startedAt = new Date();
 
   try {
     return await prisma.session.create({
@@ -55,8 +80,8 @@ async function createSession({ subjectId, classId, facultyId, date, startTime, e
 
         // startTime and endTime in DB are DateTime: the session really starts NOW.
         // The "10:00"-style strings from the frontend go into the scheduled* TEXT fields.
-        startTime: new Date(),
-        windowExpiry: new Date(Date.now() + WINDOW_SECONDS * 1000),
+        startTime: startedAt,
+        windowExpiry: new Date(startedAt.getTime() + windowSeconds * 1000),
         endTime: null,
 
         scheduledStartTime: startTime || null,
@@ -138,6 +163,10 @@ async function getSessionHistory(subjectId) {
 module.exports = {
   CODE_LENGTH,
   WINDOW_SECONDS,
+  MIN_WINDOW_SECONDS,
+  MAX_WINDOW_SECONDS,
+  parseWindowSeconds,
+  sessionWindowSeconds,
   generateCode,
   createSession,
   getActiveSession,

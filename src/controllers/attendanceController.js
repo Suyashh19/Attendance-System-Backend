@@ -33,7 +33,7 @@ function scheduleFacultyCount(facultyId, sessionId) {
 exports.submitAttendance = async (req, res, next) => {
   try {
     const studentId = req.user.userId;
-    const { code, deviceId } = req.body;
+    const { code, deviceId, violation } = req.body;
     const sessionId = Number(req.body.sessionId);
 
     if (!Number.isInteger(sessionId) || sessionId <= 0) {
@@ -46,6 +46,7 @@ exports.submitAttendance = async (req, res, next) => {
       studentId: Number(studentId),
       code,
       deviceId,
+      violation,
     });
 
     // A wrong code with attempts left is not a final result, so nothing is broadcast
@@ -55,8 +56,8 @@ exports.submitAttendance = async (req, res, next) => {
         .catch((err) => console.error("[Notify Error]", err));
     }
 
-    // Keep the faculty's live present count in sync
-    if (result.status === "PRESENT" && result.facultyId) {
+    // Keep the faculty's live present count in sync (a PRESENT taken away also changes it)
+    if ((result.status === "PRESENT" || result.status === "INVALID") && result.facultyId) {
       scheduleFacultyCount(result.facultyId, sessionId);
     }
 
