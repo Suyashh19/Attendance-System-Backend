@@ -21,6 +21,7 @@ model User {
   deviceLocked Boolean @default(false)
   deviceChangedAt DateTime? // last time the student moved the account to another phone
   pushToken String?
+  devicePlatform String? @default("android") // "ios" | "android"
 
   // Relations
   taughtSubjects  Subject[]    @relation("FacultySubjects")

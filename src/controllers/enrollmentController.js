@@ -97,7 +97,7 @@ exports.getSubjectEnrollments = async (req, res, next) => {
     const enrollments = await prisma.enrollment.findMany({
       where: { subjectId },
       include: {
-        student: { select: { id: true, name: true, rollNo: true, prn: true, email: true } },
+        student: { select: { id: true, name: true, rollNo: true, prn: true, email: true, devicePlatform: true } },
       },
       orderBy: { enrolledAt: "asc" },
     });
@@ -214,6 +214,143 @@ exports.updateEnrollmentStatus = async (req, res, next) => {
     res.json({ 
       message: `Enrollment status updated to ${status}`, 
       enrollment: updated 
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Faculty manually adds a student (e.g. iPhone student) to a subject
+exports.addManualStudent = async (req, res, next) => {
+  try {
+    const subjectId = Number(req.params.subjectId);
+    const { name, prn, email, rollNo, platform = "ios" } = req.body || {};
+    const facultyId = req.user.userId;
+
+    if (!Number.isInteger(subjectId) || subjectId <= 0) {
+      return res.status(400).json({ error: "Invalid subject id" });
+    }
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: "Student name is required" });
+    }
+
+    if (!prn || !prn.trim()) {
+      return res.status(400).json({ error: "PRN is required" });
+    }
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: "Student email is required" });
+    }
+
+    const cleanName = name.trim();
+    const cleanPrn = prn.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanRollNo = (rollNo && rollNo.trim()) ? rollNo.trim() : cleanPrn;
+    const cleanPlatform = String(platform).toLowerCase() === "android" ? "android" : "ios";
+
+    // 1. Verify faculty owns the subject
+    const subject = await prisma.subject.findFirst({
+      where: { id: subjectId, facultyId },
+    });
+    if (!subject) {
+      return res.status(403).json({ error: "Unauthorized for this subject" });
+    }
+
+    // 2. Check if student already exists by email or PRN
+    let student = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: cleanEmail },
+          { prn: cleanPrn },
+        ],
+      },
+    });
+
+    if (student) {
+      if (student.role !== "student") {
+        return res.status(400).json({ error: "This email is registered to a faculty account" });
+      }
+
+      student = await prisma.user.update({
+        where: { id: student.id },
+        data: {
+          name: student.name || cleanName,
+          prn: student.prn || cleanPrn,
+          devicePlatform: cleanPlatform,
+        },
+      });
+    } else {
+      const bcrypt = require("bcrypt");
+      const defaultPassword = `Attendance@${cleanPrn}`;
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+      student = await prisma.user.create({
+        data: {
+          email: cleanEmail,
+          password: hashedPassword,
+          role: "student",
+          name: cleanName,
+          prn: cleanPrn,
+          rollNo: cleanRollNo,
+          devicePlatform: cleanPlatform,
+        },
+      });
+    }
+
+    // 3. Check enrollment
+    const existingEnrollment = await prisma.enrollment.findUnique({
+      where: {
+        studentId_subjectId: {
+          studentId: student.id,
+          subjectId,
+        },
+      },
+    });
+
+    if (existingEnrollment) {
+      if (existingEnrollment.status === "APPROVED") {
+        return res.status(400).json({ error: "Student is already enrolled in this subject" });
+      }
+
+      const updated = await prisma.enrollment.update({
+        where: { id: existingEnrollment.id },
+        data: { status: "APPROVED" },
+      });
+      return res.json({
+        message: "Student enrollment approved successfully",
+        student: {
+          id: student.id,
+          name: student.name,
+          prn: student.prn,
+          rollNo: student.rollNo,
+          email: student.email,
+          devicePlatform: student.devicePlatform,
+        },
+        enrollment: updated,
+      });
+    }
+
+    // 4. Create new APPROVED enrollment
+    const enrollment = await prisma.enrollment.create({
+      data: {
+        studentId: student.id,
+        subjectId,
+        status: "APPROVED",
+      },
+    });
+
+    res.status(201).json({
+      message: "Student added and enrolled successfully",
+      student: {
+        id: student.id,
+        name: student.name,
+        prn: student.prn,
+        rollNo: student.rollNo,
+        email: student.email,
+        devicePlatform: student.devicePlatform,
+      },
+      enrollment,
     });
   } catch (err) {
     next(err);

@@ -113,7 +113,7 @@ exports.getSessionAttendance = async (req, res, next) => {
       where: { subjectId: session.subjectId, status: "APPROVED" },
       include: {
         student: {
-          select: { id: true, name: true, prn: true, rollNo: true }
+          select: { id: true, name: true, prn: true, rollNo: true, devicePlatform: true }
         }
       }
     });

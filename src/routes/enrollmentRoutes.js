@@ -38,6 +38,13 @@ router.delete(
   enrollmentController.unenrollSubject
 );
 
+// POST /api/enrollments/subject/:subjectId/manual-student (Faculty manually enrolls student, e.g. iOS)
+router.post(
+  "/subject/:subjectId/manual-student",
+  requireRole("faculty"),
+  enrollmentController.addManualStudent
+);
+
 // PUT /api/enrollments/subject/:subjectId/approve-all (every pending request)
 router.put(
   "/subject/:subjectId/approve-all",
