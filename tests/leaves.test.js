@@ -37,8 +37,8 @@ function buildPrisma({ leaves = [], sessions = [], attendances = [] } = {}) {
     { studentId: OTHER_STUDENT_ID, subjectId: 10, status: "APPROVED" },
   ];
   const students = [
-    { id: STUDENT_ID, name: "Asha", rollNo: "1", prn: "P1", pushToken: null },
-    { id: OTHER_STUDENT_ID, name: "Ravi", rollNo: "2", prn: "P2", pushToken: null },
+    { id: STUDENT_ID, name: "Asha", prn: "P1", pushToken: null },
+    { id: OTHER_STUDENT_ID, name: "Ravi", prn: "P2", pushToken: null },
   ];
   const rows = leaves.map((l, i) => ({ id: i + 1, status: "PENDING", reviewNote: null, createdAt: new Date(2026, 9, 20 + i), ...l }));
 

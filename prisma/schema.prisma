@@ -15,7 +15,6 @@ model User {
   password String
   role     String // "faculty" | "student"
   name     String?
-  rollNo   String? @unique
   prn      String? @unique
   deviceId String?
   deviceLocked Boolean @default(false)

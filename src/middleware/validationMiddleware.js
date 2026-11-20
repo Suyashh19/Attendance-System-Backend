@@ -32,7 +32,7 @@ const validateRegister = validate({
   password: { required: true, type: "string", minLength: 6 },
   role:     { required: false, type: "string" },
   name:     { required: false, type: "string" },
-  rollNo:   { required: false, type: "string" },
+  prn:      { required: false, type: "string" },
   deviceId: { required: false, type: "string" },
 });
 

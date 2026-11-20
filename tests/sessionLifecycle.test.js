@@ -18,8 +18,8 @@ function buildPrisma(leaves = []) {
   };
   const attendances = [{ sessionId: SESSION_ID, studentId: 1, status: "PRESENT", reason: null, editedByFaculty: false }];
   const enrollments = [
-    { studentId: 1, student: { id: 1, name: "Asha", prn: "P1", rollNo: null, pushToken: null } },
-    { studentId: 2, student: { id: 2, name: "Ravi", prn: "P2", rollNo: null, pushToken: null } },
+    { studentId: 1, student: { id: 1, name: "Asha", prn: "P1", pushToken: null } },
+    { studentId: 2, student: { id: 2, name: "Ravi", prn: "P2", pushToken: null } },
   ];
 
   return {

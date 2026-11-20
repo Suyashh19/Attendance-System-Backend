@@ -139,7 +139,7 @@ exports.getSubjectLeaves = async (req, res, next) => {
 
     const leaves = await prisma.leaveRequest.findMany({
       where: { subjectId, status: { in: ["PENDING", "APPROVED", "REJECTED"] } },
-      include: { student: { select: { id: true, name: true, rollNo: true, prn: true } } },
+      include: { student: { select: { id: true, name: true, prn: true } } },
       orderBy: { createdAt: "desc" },
       take: LIST_LIMIT,
     });
@@ -158,7 +158,7 @@ exports.getPendingLeaves = async (req, res, next) => {
     const leaves = await prisma.leaveRequest.findMany({
       where: { status: "PENDING", subject: { facultyId: req.user.userId } },
       include: {
-        student: { select: { id: true, name: true, rollNo: true, prn: true } },
+        student: { select: { id: true, name: true, prn: true } },
         subject: { select: { id: true, name: true, code: true, type: true } },
       },
       orderBy: { createdAt: "asc" },

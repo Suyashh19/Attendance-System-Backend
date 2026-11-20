@@ -59,7 +59,7 @@ async function getAttendanceSummary(subjectId) {
   const studentIds = Object.keys(pivot).map(Number);
   const students = await prisma.user.findMany({
     where: { id: { in: studentIds } },
-    select: { id: true, name: true, email: true, rollNo: true, prn: true },
+    select: { id: true, name: true, email: true, prn: true },
   });
 
   const summary = students.map((s) => {
@@ -212,7 +212,7 @@ async function generateAttendanceMatrix(subjectId, filters = {}) {
         where: { status: "APPROVED" },
         include: {
           student: {
-            select: { id: true, name: true, email: true, rollNo: true, prn: true }
+            select: { id: true, name: true, email: true, prn: true }
           }
         }
       }

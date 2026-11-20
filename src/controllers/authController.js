@@ -14,7 +14,7 @@ const DEVICE_CHANGE_COOLDOWN_DAYS = 30;
 
 // REGISTER
 exports.register = async (req, res) => {
-  const { email, password, name, rollNo, prn, role, otp } = req.body || {};
+  const { email, password, name, prn, role, otp } = req.body || {};
 
   // The web app signs up faculty only. Students must sign up in the app, which binds their phone.
   const web = isWebRequest(req);
@@ -44,12 +44,6 @@ exports.register = async (req, res) => {
       }
     }
 
-    // Ensure rollNo is unique if provided
-    if (rollNo) {
-      const existingRollNo = await prisma.user.findUnique({ where: { rollNo } });
-      if (existingRollNo) return res.status(400).json({ error: "Roll number already exists" });
-    }
-
     // PRN Logic: Students only, mandatory if student
     if (role === "student" && !prn) {
       return res.status(400).json({ error: "PRN is required for students" });
@@ -70,12 +64,11 @@ exports.register = async (req, res) => {
         password: hashed,
         role: role || "student",
         name: name || null,
-        rollNo: rollNo || null,
         prn: role === "student" ? prn : null,
         deviceId: deviceId || null,
         deviceLocked: !!deviceId // Lock immediately if ID is provided
       },
-      select: { id: true, email: true, role: true, name: true, rollNo: true, prn: true }
+      select: { id: true, email: true, role: true, name: true, prn: true }
     });
 
     // Delete OTP after successful use
@@ -143,7 +136,7 @@ exports.getProfile = async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.userId },
-      select: { id: true, email: true, role: true, name: true, rollNo: true, prn: true, deviceId: true }
+      select: { id: true, email: true, role: true, name: true, prn: true, deviceId: true }
     });
 
     if (!user) return res.status(404).json({ error: "User not found" });
@@ -197,7 +190,7 @@ exports.updatePrn = async (req, res) => {
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: { prn },
-      select: { id: true, email: true, role: true, name: true, rollNo: true, prn: true }
+      select: { id: true, email: true, role: true, name: true, prn: true }
     });
 
     res.json(updatedUser);
@@ -528,7 +521,7 @@ exports.confirmDeviceChange = async (req, res) => {
     const updated = await prisma.user.update({
       where: { id: user.id },
       data: { deviceId, deviceLocked: true, deviceChangedAt: new Date() },
-      select: { id: true, email: true, role: true, name: true, rollNo: true, prn: true, deviceId: true },
+      select: { id: true, email: true, role: true, name: true, prn: true, deviceId: true },
     });
 
     await prisma.otp.deleteMany({ where: { email: user.email } });

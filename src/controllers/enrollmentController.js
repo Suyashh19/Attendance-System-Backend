@@ -97,7 +97,7 @@ exports.getSubjectEnrollments = async (req, res, next) => {
     const enrollments = await prisma.enrollment.findMany({
       where: { subjectId },
       include: {
-        student: { select: { id: true, name: true, rollNo: true, prn: true, email: true, devicePlatform: true } },
+        student: { select: { id: true, name: true, prn: true, email: true, devicePlatform: true } },
       },
       orderBy: { enrolledAt: "asc" },
     });
@@ -224,7 +224,7 @@ exports.updateEnrollmentStatus = async (req, res, next) => {
 exports.addManualStudent = async (req, res, next) => {
   try {
     const subjectId = Number(req.params.subjectId);
-    const { name, prn, email, rollNo, platform = "ios" } = req.body || {};
+    const { name, prn, email, platform = "ios" } = req.body || {};
     const facultyId = req.user.userId;
 
     if (!Number.isInteger(subjectId) || subjectId <= 0) {
@@ -246,7 +246,6 @@ exports.addManualStudent = async (req, res, next) => {
     const cleanName = name.trim();
     const cleanPrn = prn.trim();
     const cleanEmail = email.trim().toLowerCase();
-    const cleanRollNo = (rollNo && rollNo.trim()) ? rollNo.trim() : cleanPrn;
     const cleanPlatform = String(platform).toLowerCase() === "android" ? "android" : "ios";
 
     // 1. Verify faculty owns the subject
@@ -292,7 +291,6 @@ exports.addManualStudent = async (req, res, next) => {
           role: "student",
           name: cleanName,
           prn: cleanPrn,
-          rollNo: cleanRollNo,
           devicePlatform: cleanPlatform,
         },
       });
@@ -323,7 +321,6 @@ exports.addManualStudent = async (req, res, next) => {
           id: student.id,
           name: student.name,
           prn: student.prn,
-          rollNo: student.rollNo,
           email: student.email,
           devicePlatform: student.devicePlatform,
         },
@@ -346,7 +343,6 @@ exports.addManualStudent = async (req, res, next) => {
         id: student.id,
         name: student.name,
         prn: student.prn,
-        rollNo: student.rollNo,
         email: student.email,
         devicePlatform: student.devicePlatform,
       },

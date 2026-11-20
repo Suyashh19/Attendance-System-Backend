@@ -29,7 +29,7 @@ async function getSessionRoster(sessionId, subjectId) {
     prisma.enrollment.findMany({
       where: { subjectId, status: "APPROVED" },
       include: {
-        student: { select: { id: true, name: true, prn: true, rollNo: true, pushToken: true, devicePlatform: true } },
+        student: { select: { id: true, name: true, prn: true, pushToken: true, devicePlatform: true } },
       },
     }),
     prisma.attendance.findMany({ where: { sessionId } }),
